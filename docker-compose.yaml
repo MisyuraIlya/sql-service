@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: go_app
+    ports:
+      - "8080:8080"          # Exposes your Go app on port 8080
+    environment:
+      - REDIS_ADDR=redis:6379 # Environment variable to connect to Redis
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    ports:
+      - "6379:6379"          # Exposes Redis on its default port
+    volumes:
+      - redis_data:/data     # Persists Redis data
+
+volumes:
+  redis_data:
