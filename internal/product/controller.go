@@ -1,24 +1,26 @@
 package product
 
 import (
-	"fmt"
 	"net/http"
 	"sql-service/configs"
 	"sql-service/pkg/req"
+	"sql-service/pkg/res"
 )
 
 type ProductControllerDeps struct {
-	Config         *configs.Config
-	ProductService *ProductService
+	*configs.Config
+	*ProductService
 }
 
 type ProductController struct {
-	config *configs.Config
+	*configs.Config
+	*ProductService
 }
 
 func NewProductController(router *http.ServeMux, deps ProductControllerDeps) *ProductController {
 	controller := &ProductController{
-		config: deps.Config,
+		Config:         deps.Config,
+		ProductService: deps.ProductService,
 	}
 
 	router.Handle("POST /products", controller.GetProducts())
@@ -32,10 +34,8 @@ func (Controller *ProductController) GetProducts() http.HandlerFunc {
 		if err != nil {
 			return
 		}
-
-		for _, sku := range body.Skus {
-			fmt.Println(sku)
-		}
+		data := Controller.ProductService.ProductServiceHandler(body)
+		res.Json(w, data, 200)
 
 	}
 }

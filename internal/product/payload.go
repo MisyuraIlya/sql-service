@@ -1,5 +1,9 @@
 package product
 
 type ProductsDto struct {
-	Skus []string `json:"skus" validate:"required"`
+	PriceList string   `json:priceList`
+	WareHouse string   `json:wareHouse`
+	CardCode  string   `json:cardCode`
+	Date      string   `json:date`
+	Skus      []string `json:"skus" validate:"required"`
 }

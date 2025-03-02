@@ -15,7 +15,7 @@ type Redisdb struct {
 
 func NewRedis(conf *configs.Config) *Redisdb {
 	rdb := redis.NewClient(&redis.Options{
-		Addr: conf.Redis.Dsn,
+		// Addr: conf.Redis.Dsn,
 	})
 
 	ctx := context.Background()
