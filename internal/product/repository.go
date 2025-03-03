@@ -4,11 +4,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"sql-service/pkg/db"
 )
 
+// Null Handling for JSON
 type MyNullFloat64 struct {
 	sql.NullFloat64
 }
@@ -31,6 +31,7 @@ func (s MyNullString) MarshalJSON() ([]byte, error) {
 	return []byte("null"), nil
 }
 
+// Product Model
 type Product struct {
 	PriceListPrice      MyNullFloat64 `json:"priceListPrice"`
 	Currency            MyNullString  `json:"currency"`
@@ -45,6 +46,7 @@ type Product struct {
 	Commited            MyNullFloat64 `json:"commited"`
 }
 
+// Repository
 type ProductRepository struct {
 	Db *db.Db
 }
@@ -55,59 +57,67 @@ func NewProductRepository(db *db.Db) *ProductRepository {
 	}
 }
 
+// Fetch Products
 func (r *ProductRepository) GetProducts(dto *ProductsDto) ([]Product, error) {
-	skuParamNames := make([]string, len(dto.Skus))
-	for i := range dto.Skus {
-		skuParamNames[i] = fmt.Sprintf("@sku%d", i)
+	if len(dto.Skus) == 0 {
+		return nil, fmt.Errorf("sku list cannot be empty")
 	}
-	skuPlaceholders := strings.Join(skuParamNames, ", ")
 
-	query := fmt.Sprintf(`
-SELECT 
-    ITM1.[Price] AS [PriceListPrice],
-    ITM1.[Currency] AS [Currency],
-    OSPP.[Price] AS [SpecialPriceLvl1],
-    SPP1.[Price] AS [SpecialPriceLvl2],
-    OSPP.[Discount] AS [SpecialDiscountLvl1],
-    SPP1.[Discount] AS [SpecialDiscountLvl2],
-    OITW.[ItemCode] AS [sku],
-    OITW.[WhsCode] AS [warehouseCode],
-    OITW.[OnHand] AS [stock],
-    OITW.[OnOrder] AS [onOrder],
-    OITW.[IsCommited] AS [commited]
-FROM [OITM] OITM
-LEFT JOIN [ITM1] ITM1 
-    ON OITM.[ItemCode] = ITM1.[ItemCode]
-LEFT JOIN [OSPP] OSPP 
-    ON OITM.[ItemCode] = OSPP.[ItemCode]
-    AND ITM1.[PriceList] = OSPP.[ListNum]
-    AND (
-         (OSPP.[ValidFrom] IS NULL AND OSPP.[ValidTo] IS NULL)
-         OR (OSPP.[ValidFrom] <= @date1 AND OSPP.[ValidTo] IS NULL)
-         OR (OSPP.[ValidFrom] <= @date2 AND OSPP.[ValidTo] >= @date3)
-        )
-LEFT JOIN [SPP1] SPP1 
-    ON OITM.[ItemCode] = SPP1.[ItemCode]
-    AND OSPP.[ListNum] = SPP1.[ListNum]
-    AND (
-         (SPP1.[FromDate] IS NULL AND SPP1.[ToDate] IS NULL)
-         OR (SPP1.[FromDate] <= @date4 AND SPP1.[ToDate] IS NULL)
-         OR (SPP1.[FromDate] <= @date5 AND SPP1.[ToDate] >= @date6)
-        )
-LEFT JOIN OITW
-    ON OITM.[ItemCode] = OITW.[ItemCode]
-    AND OITW.[WhsCode] = @warehouse
-WHERE 
-    OITM.[ItemCode] IN (%s)
-    AND ITM1.[PriceList] = @priceList
-    AND (
-         OSPP.[ListNum] IS NULL 
-         OR (
-             (OSPP.[CardCode] IS NULL OR OSPP.[CardCode] = @cardCode)
-             AND OSPP.[ListNum] = @priceList
-            )
-        );`, skuPlaceholders)
+	// Step 1: Construct Temporary Table Query
+	insertSkuQuery := "DECLARE @SkuList TABLE (sku NVARCHAR(50));"
+	for _, sku := range dto.Skus {
+		insertSkuQuery += fmt.Sprintf("INSERT INTO @SkuList (sku) VALUES ('%s');", sku)
+	}
 
+	// Step 2: Construct Main Query
+	query := insertSkuQuery + `
+	SELECT 
+		ITM1.[Price] AS [PriceListPrice],
+		ITM1.[Currency] AS [Currency],
+		OSPP.[Price] AS [SpecialPriceLvl1],
+		SPP1.[Price] AS [SpecialPriceLvl2],
+		OSPP.[Discount] AS [SpecialDiscountLvl1],
+		SPP1.[Discount] AS [SpecialDiscountLvl2],
+		OITW.[ItemCode] AS [sku],
+		OITW.[WhsCode] AS [warehouseCode],
+		OITW.[OnHand] AS [stock],
+		OITW.[OnOrder] AS [onOrder],
+		OITW.[IsCommited] AS [commited]
+	FROM [OITM] OITM
+	LEFT JOIN [ITM1] ITM1 
+		ON OITM.[ItemCode] = ITM1.[ItemCode]
+	LEFT JOIN [OSPP] OSPP 
+		ON OITM.[ItemCode] = OSPP.[ItemCode]
+		AND ITM1.[PriceList] = OSPP.[ListNum]
+		AND (
+			(OSPP.[ValidFrom] IS NULL AND OSPP.[ValidTo] IS NULL)
+			OR (OSPP.[ValidFrom] <= @date1 AND OSPP.[ValidTo] IS NULL)
+			OR (OSPP.[ValidFrom] <= @date2 AND OSPP.[ValidTo] >= @date3)
+		)
+	LEFT JOIN [SPP1] SPP1 
+		ON OITM.[ItemCode] = SPP1.[ItemCode]
+		AND OSPP.[ListNum] = SPP1.[ListNum]
+		AND (
+			(SPP1.[FromDate] IS NULL AND SPP1.[ToDate] IS NULL)
+			OR (SPP1.[FromDate] <= @date4 AND SPP1.[ToDate] IS NULL)
+			OR (SPP1.[FromDate] <= @date5 AND SPP1.[ToDate] >= @date6)
+		)
+	LEFT JOIN OITW
+		ON OITM.[ItemCode] = OITW.[ItemCode]
+		AND OITW.[WhsCode] = @warehouse
+	WHERE 
+		OITM.[ItemCode] IN (SELECT sku FROM @SkuList)
+		AND ITM1.[PriceList] = @priceList
+		AND (
+			OSPP.[ListNum] IS NULL 
+			OR (
+				(OSPP.[CardCode] IS NULL OR OSPP.[CardCode] = @cardCode)
+				AND OSPP.[ListNum] = @priceList
+			)
+		);
+	`
+
+	// Step 3: Define Parameters
 	args := []interface{}{
 		sql.Named("date1", dto.Date),
 		sql.Named("date2", dto.Date),
@@ -116,24 +126,18 @@ WHERE
 		sql.Named("date5", dto.Date),
 		sql.Named("date6", dto.Date),
 		sql.Named("warehouse", dto.WareHouse),
-	}
-
-	for i, sku := range dto.Skus {
-		paramName := fmt.Sprintf("sku%d", i)
-		args = append(args, sql.Named(paramName, sku))
-	}
-
-	args = append(args,
 		sql.Named("priceList", dto.PriceList),
 		sql.Named("cardCode", dto.CardCode),
-	)
+	}
 
+	// Step 4: Execute Query
 	rows, err := r.Db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
+	// Step 5: Process Result
 	var products []Product
 	for rows.Next() {
 		var p Product
