@@ -9,11 +9,12 @@ import (
 )
 
 type Config struct {
-	DbConfig DbConfig
-	imagesPath: "P:/Bitmaps/ProductImages"
-	productLineArtsPath: "P:/Bitmaps/Productlinearts"
-	
+    DbConfig            DbConfig
+    ImagesPath          string
+    ProductLineArtsPath string
 }
+
+
 
 type DbConfig struct {
 	Server   string
@@ -47,6 +48,8 @@ func LoadConfig() *Config {
 			User:     os.Getenv("USER"),
 			Password: os.Getenv("PASSWORD"),
 			Database: os.Getenv("DATABASE"),
+			ImagesPath:          "P:/Bitmaps/ProductImages",
+			ProductLineArtsPath: "P:/Bitmaps/Productlinearts",
 		},
 	}
 }
