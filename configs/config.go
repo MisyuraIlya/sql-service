@@ -10,6 +10,8 @@ import (
 
 type Config struct {
 	DbConfig DbConfig
+    ImagesPath         string `yaml:"imagesPath"`
+    ProductLineArtsPath string `yaml:"productLineArtsPath"`
 }
 
 type DbConfig struct {

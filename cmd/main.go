@@ -6,13 +6,13 @@ import (
 	"net/http"
 	"sql-service/configs"
 	"sql-service/internal/product"
+	"sql-service/internal/fiels"
 	"sql-service/pkg/db"
 )
 
 func App() http.Handler {
 	conf := configs.LoadConfig()
 
-	// Capture both the connection and the error
 	conn, err := db.NewConnection(conf)
 	if err != nil {
 		log.Fatalf("Failed to connect to the database: %v", err)
@@ -25,12 +25,19 @@ func App() http.Handler {
 
 	// services
 	productService := product.NewProductService(productRepository)
+	filesService := fiels.NewFilesService()
 
 	// controllers
 	product.NewProductController(router, product.ProductControllerDeps{
 		Config:         conf,
 		ProductService: productService,
 	})
+
+	fiels.NewFielsController(router, fiels.FielsControllerDeps{
+		Config:         conf,
+		FileService:	filesService,
+	})
+
 	return router
 }
 
