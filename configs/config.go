@@ -8,22 +8,20 @@ import (
 	"github.com/joho/godotenv"
 )
 
+// Config holds the application configuration.
 type Config struct {
 	DbConfig            DbConfig
 	ImagesPath          string
 	ProductLineArtsPath string
 }
 
+// DbConfig holds database-related configuration.
 type DbConfig struct {
 	Server   string
 	Port     int
 	User     string
 	Password string
 	Database string
-}
-
-type RedisConfig struct {
-	Dsn string
 }
 
 func LoadConfig() *Config {
@@ -47,7 +45,7 @@ func LoadConfig() *Config {
 			Password: os.Getenv("PASSWORD"),
 			Database: os.Getenv("DATABASE"),
 		},
-		ImagesPath:          "P:/Bitmaps/ProductImages",
-		ProductLineArtsPath: "P:/Bitmaps/Productlinearts",
+		ImagesPath:          `\\192.168.2.41\b1_shr\Bitmaps\ProductImages`,
+		ProductLineArtsPath: `\\192.168.2.41\b1_shr\Bitmaps\Productlinearts`,
 	}
 }

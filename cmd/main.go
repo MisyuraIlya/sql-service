@@ -5,8 +5,8 @@ import (
 	"log"
 	"net/http"
 	"sql-service/configs"
-	"sql-service/internal/product"
 	"sql-service/internal/fiels"
+	"sql-service/internal/product"
 	"sql-service/pkg/db"
 )
 
@@ -34,8 +34,8 @@ func App() http.Handler {
 	})
 
 	fiels.NewFielsController(router, fiels.FielsControllerDeps{
-		Config:         conf,
-		FileService:	filesService,
+		Config:      conf,
+		FileService: filesService,
 	})
 
 	return router
