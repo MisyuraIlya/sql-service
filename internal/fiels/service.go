@@ -35,6 +35,5 @@ func (fs *FileService) ListImages(folderPath string) ([]string, error) {
 			}
 		}
 	}
-
 	return images, nil
 }

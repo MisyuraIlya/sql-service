@@ -40,7 +40,7 @@ func (controller *FielsController) GetAllImages() http.HandlerFunc {
 		folderPath := controller.Config.ImagesPath
 		images, err := controller.FileService.ListImages(folderPath)
 		if err != nil {
-			res.Json(w, "Unable to fetch images", http.StatusInternalServerError)
+			res.Json(w, map[string]interface{}{"error": err.Error()}, http.StatusInternalServerError)
 			return
 		}
 		res.Json(w, map[string]interface{}{"images": images}, http.StatusOK)
@@ -52,7 +52,7 @@ func (controller *FielsController) GetImage() http.HandlerFunc {
 		prefix := "/image/"
 		fileName := strings.TrimPrefix(r.URL.Path, prefix)
 		if fileName == "" {
-			res.Json(w, "File name is required", http.StatusBadRequest)
+			res.Json(w, map[string]interface{}{"error": "File name is required"}, http.StatusBadRequest)
 			return
 		}
 
@@ -60,7 +60,7 @@ func (controller *FielsController) GetImage() http.HandlerFunc {
 		filePath := filepath.Join(folderPath, fileName)
 
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			res.Json(w, "Image not found", http.StatusNotFound)
+			res.Json(w, map[string]interface{}{"error": "Image not found"}, http.StatusNotFound)
 			return
 		}
 
@@ -75,7 +75,7 @@ func (controller *FielsController) GetImage() http.HandlerFunc {
 		case ".bmp":
 			w.Header().Set("Content-Type", "image/bmp")
 		default:
-			res.Json(w, "Unsupported image format", http.StatusUnsupportedMediaType)
+			res.Json(w, map[string]interface{}{"error": "Unsupported image format"}, http.StatusUnsupportedMediaType)
 			return
 		}
 
@@ -89,7 +89,7 @@ func (controller *FielsController) GetProductLineArtsImages() http.HandlerFunc {
 		folderPath := controller.Config.ProductLineArtsPath
 		images, err := controller.FileService.ListImages(folderPath)
 		if err != nil {
-			res.Json(w, "Unable to fetch product line arts images", http.StatusInternalServerError)
+			res.Json(w, map[string]interface{}{"error": err.Error()}, http.StatusInternalServerError)
 			return
 		}
 		res.Json(w, map[string]interface{}{"images": images}, http.StatusOK)
@@ -101,7 +101,7 @@ func (controller *FielsController) GetProductLineArt() http.HandlerFunc {
 		prefix := "/productlineart/"
 		fileName := strings.TrimPrefix(r.URL.Path, prefix)
 		if fileName == "" {
-			res.Json(w, "File name is required", http.StatusBadRequest)
+			res.Json(w, map[string]interface{}{"error": "File name is required"}, http.StatusBadRequest)
 			return
 		}
 
@@ -109,7 +109,7 @@ func (controller *FielsController) GetProductLineArt() http.HandlerFunc {
 		filePath := filepath.Join(folderPath, fileName)
 
 		if _, err := os.Stat(filePath); os.IsNotExist(err) {
-			res.Json(w, "Image not found", http.StatusNotFound)
+			res.Json(w, map[string]interface{}{"error": "Image not found"}, http.StatusNotFound)
 			return
 		}
 
@@ -124,7 +124,7 @@ func (controller *FielsController) GetProductLineArt() http.HandlerFunc {
 		case ".bmp":
 			w.Header().Set("Content-Type", "image/bmp")
 		default:
-			res.Json(w, "Unsupported image format", http.StatusUnsupportedMediaType)
+			res.Json(w, map[string]interface{}{"error": "Unsupported image format"}, http.StatusUnsupportedMediaType)
 			return
 		}
 
