@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"sql-service/configs"
+	"sql-service/internal/documents"
 	"sql-service/internal/fiels"
 	"sql-service/internal/product"
 	"sql-service/pkg/db"
@@ -22,15 +23,22 @@ func App() http.Handler {
 
 	// repositories
 	productRepository := product.NewProductRepository(conn)
+	documentsRepository := documents.NewDocumentRepository(conn)
 
 	// services
 	productService := product.NewProductService(productRepository)
+	documentService := documents.NewDocumentService(documentsRepository)
 	filesService := fiels.NewFilesService()
 
 	// controllers
 	product.NewProductController(router, product.ProductControllerDeps{
 		Config:         conf,
 		ProductService: productService,
+	})
+
+	documents.NewDocumentController(router, documents.DocumentControllerDeps{
+		Config:          conf,
+		DocumentService: documentService,
 	})
 
 	fiels.NewFielsController(router, fiels.FielsControllerDeps{
