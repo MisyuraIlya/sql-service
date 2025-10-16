@@ -27,26 +27,6 @@ func (s MyNullString) MarshalJSON() ([]byte, error) {
 	return []byte("null"), nil
 }
 
-type Product struct {
-	SKU                  string        `json:"sku"`
-	CardCode             string        `json:"cardCode"`
-	PriceList            MyNullFloat64 `json:"priceList"`
-	Currency             MyNullString  `json:"currency"`
-	PriceListPrice       MyNullFloat64 `json:"priceListPrice"`
-	OSPPPrice            MyNullFloat64 `json:"osppPrice"`
-	OSPPDiscount         MyNullFloat64 `json:"osppDiscount"`
-	BPGroupDiscount      MyNullFloat64 `json:"bpGroupDiscount"`
-	ManufacturerName     MyNullString  `json:"manufacturerName"`
-	ManufacturerDiscount MyNullFloat64 `json:"manufacturerDiscount"`
-	PromoDiscount        MyNullFloat64 `json:"promoDiscount"`
-	WarehouseCode        string        `json:"warehouseCode"`
-	Stock                MyNullFloat64 `json:"stock"`
-	OnOrder              MyNullFloat64 `json:"onOrder"`
-	Commited             MyNullFloat64 `json:"commited"`
-	PriceSource          string        `json:"priceSource"`
-	FinalPrice           float64       `json:"finalPrice"`
-}
-
 type ProductRepository struct{ Db *db.Db }
 
 func NewProductRepository(db *db.Db) *ProductRepository { return &ProductRepository{Db: db} }
@@ -282,14 +262,14 @@ ORDER BY BP.ItemCode;
 	return products, nil
 }
 
-func (r *ProductRepository) GeTreeProducts(dto *ProductsTreeDto) ([]Product, error) {
+func (r *ProductRepository) GeTreeProducts(dto *ProductsTreeDto) ([]BomHeader, error) {
 	if len(dto.Skus) == 0 {
 		return nil, fmt.Errorf("sku list cannot be empty")
 	}
 
-	// Build UNION for parent SKUs
+	// Build UNION of parameters for ParentSkuList
 	unionParts := make([]string, 0, len(dto.Skus))
-	args := []any{}
+	args := make([]any, 0, len(dto.Skus))
 	for i, sku := range dto.Skus {
 		name := fmt.Sprintf("sku%d", i)
 		if i == 0 {
@@ -301,39 +281,111 @@ func (r *ProductRepository) GeTreeProducts(dto *ProductsTreeDto) ([]Product, err
 	}
 	parentSkuUnion := strings.Join(unionParts, "\n        ")
 
-	// ITT1: Father = parent, Code = child
-	// OITT: Code = parent, TreeType = 'S' (Sales BOM)
-	query := fmt.Sprintf(`
+	// 1) Fetch all headers for the requested SKUs
+	headersSQL := fmt.Sprintf(`
 WITH ParentSkuList AS (
         %s
 )
 SELECT
-       L.Code AS sku              -- child item code
-FROM ITT1 AS L WITH (NOLOCK)
-JOIN OITT AS H WITH (NOLOCK)
-  ON H.Code = L.Father
- AND H.TreeType = 'S'            -- Sales BOM only
-WHERE L.Father IN (SELECT sku FROM ParentSkuList)
-GROUP BY L.Code
-ORDER BY L.Code;`, parentSkuUnion)
+    Code, TreeType, PriceList, Qauntity, CreateDate, UpdateDate, Transfered,
+    DataSource, UserSign, SCNCounter, DispCurr, ToWH, Object, LogInstac,
+    UserSign2, OcrCode, HideComp, OcrCode2, OcrCode3, OcrCode4, OcrCode5,
+    UpdateTime, Project, PlAvgSize, Name, CreateTS, UpdateTS, AtcEntry,
+    Attachment, U_UPI_Ignore, U_UPI_ProductionTree, U_XIS_Comments
+FROM OITT WITH (NOLOCK)
+WHERE Code IN (SELECT sku FROM ParentSkuList)
+`, parentSkuUnion)
 
-	rows, err := r.Db.Query(query, args...)
+	hRows, err := r.Db.Query(headersSQL, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer hRows.Close()
 
-	children := make([]Product, 0, 32)
-	for rows.Next() {
-		var sku string
-		if err := rows.Scan(&sku); err != nil {
+	// Build map[Code]*BomHeader for fast attach of lines
+	headersByCode := make(map[string]*BomHeader, len(dto.Skus))
+	for hRows.Next() {
+		var h BomHeader
+		// note the column name "Qauntity" in OITT; we scan into h.Quantity
+		if err := hRows.Scan(
+			&h.Code, &h.TreeType, &h.PriceList, &h.Quantity, &h.CreateDate, &h.UpdateDate,
+			&h.Transfered, &h.DataSource, &h.UserSign, &h.SCNCounter, &h.DispCurr, &h.ToWH,
+			&h.Object, &h.LogInstac, &h.UserSign2, &h.OcrCode, &h.HideComp, &h.OcrCode2,
+			&h.OcrCode3, &h.OcrCode4, &h.OcrCode5, &h.UpdateTime, &h.Project, &h.PlAvgSize,
+			&h.Name, &h.CreateTS, &h.UpdateTS, &h.AtcEntry, &h.Attachment, &h.U_UPI_Ignore,
+			&h.U_UPI_ProductionTree, &h.U_XIS_Comments,
+		); err != nil {
 			return nil, err
 		}
-		children = append(children, Product{SKU: sku})
+		h.Lines = make([]BomLine, 0, 8)
+		headersByCode[h.Code] = &h
 	}
-	if err := rows.Err(); err != nil {
+	if err := hRows.Err(); err != nil {
+		return nil, err
+	}
+	if len(headersByCode) == 0 {
+		// None of the requested SKUs had a BOM header
+		return []BomHeader{}, nil
+	}
+
+	// 2) Fetch all lines for the requested SKUs (Father IN list)
+	linesSQL := fmt.Sprintf(`
+WITH ParentSkuList AS (
+        %s
+)
+SELECT
+    Father, ChildNum, VisOrder, Code, Quantity, Warehouse, Price, Currency,
+    PriceList, OrigPrice, OrigCurr, IssueMthd, Uom, Comment, LogInstanc,
+    Object, OcrCode, OcrCode2, OcrCode3, OcrCode4, OcrCode5, PrncpInput,
+    Project, Type, WipActCode, AddQuantit, LineText, StageId, ItemName,
+    U_UPI_BaseEl, U_IsVisibleOnWebshop, U_InvCalc
+FROM ITT1 WITH (NOLOCK)
+WHERE Father IN (SELECT sku FROM ParentSkuList)
+ORDER BY Father, VisOrder, ChildNum, Code
+`, parentSkuUnion)
+
+	lRows, err := r.Db.Query(linesSQL, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer lRows.Close()
+
+	for lRows.Next() {
+		var l BomLine
+		if err := lRows.Scan(
+			&l.Father, &l.ChildNum, &l.VisOrder, &l.Code, &l.Quantity, &l.Warehouse,
+			&l.Price, &l.Currency, &l.PriceList, &l.OrigPrice, &l.OrigCurr,
+			&l.IssueMthd, &l.Uom, &l.Comment, &l.LogInstanc, &l.Object, &l.OcrCode,
+			&l.OcrCode2, &l.OcrCode3, &l.OcrCode4, &l.OcrCode5, &l.PrncpInput,
+			&l.Project, &l.Type, &l.WipActCode, &l.AddQuantit, &l.LineText,
+			&l.StageId, &l.ItemName, &l.U_UPI_BaseEl, &l.U_IsVisibleOnWebshop,
+			&l.U_InvCalc,
+		); err != nil {
+			return nil, err
+		}
+		if h, ok := headersByCode[l.Father]; ok {
+			h.Lines = append(h.Lines, l)
+		}
+	}
+	if err := lRows.Err(); err != nil {
 		return nil, err
 	}
 
-	return children, nil
+	// 3) Build result slice in the same order as input SKUs (for determinism)
+	result := make([]BomHeader, 0, len(headersByCode))
+	seen := make(map[string]bool, len(headersByCode))
+	for _, sku := range dto.Skus {
+		if h, ok := headersByCode[sku]; ok && !seen[sku] {
+			result = append(result, *h)
+			seen[sku] = true
+		}
+	}
+	// Add any remaining headers not in input order (duplicates, etc.)
+	for code, h := range headersByCode {
+		if !seen[code] {
+			result = append(result, *h)
+		}
+	}
+
+	return result, nil
 }
