@@ -1,9 +1,9 @@
 package product
 
 type ProductsDto struct {
-	PriceList string   `json:priceList`
-	WareHouse string   `json:wareHouse`
-	CardCode  string   `json:cardCode`
-	Date      string   `json:date`
-	Skus      []string `json:"skus" validate:"required"`
+	Skus      []string `json:"skus" validate:"required,min=1,dive,required"`
+	PriceList *string  `json:"priceList,omitempty"`
+	Warehouse string   `json:"warehouse" validate:"required"`
+	CardCode  string   `json:"cardCode" validate:"required"`
+	Date      string   `json:"date" validate:"required"`
 }
