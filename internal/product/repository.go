@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"sql-service/pkg/db"
 )
@@ -262,12 +263,12 @@ ORDER BY BP.ItemCode;
 	return products, nil
 }
 
-func (r *ProductRepository) GeTreeProducts(dto *ProductsTreeDto) ([]BomHeader, error) {
+func (r *ProductRepository) GeTreeProducts(dto *ProductsTreeDto) ([]BomHeaderDTO, error) {
 	if len(dto.Skus) == 0 {
 		return nil, fmt.Errorf("sku list cannot be empty")
 	}
 
-	// Build UNION of parameters for ParentSkuList
+	// Build UNION list of SKUs as parameters
 	unionParts := make([]string, 0, len(dto.Skus))
 	args := make([]any, 0, len(dto.Skus))
 	for i, sku := range dto.Skus {
@@ -281,7 +282,7 @@ func (r *ProductRepository) GeTreeProducts(dto *ProductsTreeDto) ([]BomHeader, e
 	}
 	parentSkuUnion := strings.Join(unionParts, "\n        ")
 
-	// 1) Fetch all headers for the requested SKUs
+	// 1) Headers
 	headersSQL := fmt.Sprintf(`
 WITH ParentSkuList AS (
         %s
@@ -302,33 +303,76 @@ WHERE Code IN (SELECT sku FROM ParentSkuList)
 	}
 	defer hRows.Close()
 
-	// Build map[Code]*BomHeader for fast attach of lines
-	headersByCode := make(map[string]*BomHeader, len(dto.Skus))
+	headersByCode := make(map[string]*BomHeaderDTO, len(dto.Skus))
 	for hRows.Next() {
-		var h BomHeader
-		// note the column name "Qauntity" in OITT; we scan into h.Quantity
+		// Declare pointer variables for scanning
+		var (
+			code, treeType                                string
+			priceList, userSign, scnCounter, logInstac    *int64
+			quantity, plAvgSize                           *float64
+			createDate, updateDate                        *time.Time
+			transfered, dataSource, dispCurr, toWH        *string
+			object, ocrCode, hideComp, ocrCode2, ocrCode3 *string
+			ocrCode4, ocrCode5, project, name             *string
+			userSign2, atcEntry, attachment               *int64
+			updateTime, createTS, updateTS                *int64 // int HHMMSS
+			uUPIIgnore, uUPIProductionTree, uXISComments  *string
+		)
+
 		if err := hRows.Scan(
-			&h.Code, &h.TreeType, &h.PriceList, &h.Quantity, &h.CreateDate, &h.UpdateDate,
-			&h.Transfered, &h.DataSource, &h.UserSign, &h.SCNCounter, &h.DispCurr, &h.ToWH,
-			&h.Object, &h.LogInstac, &h.UserSign2, &h.OcrCode, &h.HideComp, &h.OcrCode2,
-			&h.OcrCode3, &h.OcrCode4, &h.OcrCode5, &h.UpdateTime, &h.Project, &h.PlAvgSize,
-			&h.Name, &h.CreateTS, &h.UpdateTS, &h.AtcEntry, &h.Attachment, &h.U_UPI_Ignore,
-			&h.U_UPI_ProductionTree, &h.U_XIS_Comments,
+			&code, &treeType, &priceList, &quantity, &createDate, &updateDate, &transfered,
+			&dataSource, &userSign, &scnCounter, &dispCurr, &toWH, &object, &logInstac,
+			&userSign2, &ocrCode, &hideComp, &ocrCode2, &ocrCode3, &ocrCode4, &ocrCode5,
+			&updateTime, &project, &plAvgSize, &name, &createTS, &updateTS, &atcEntry,
+			&attachment, &uUPIIgnore, &uUPIProductionTree, &uXISComments,
 		); err != nil {
 			return nil, err
 		}
-		h.Lines = make([]BomLine, 0, 8)
-		headersByCode[h.Code] = &h
+
+		headersByCode[code] = &BomHeaderDTO{
+			Code:                 code,
+			TreeType:             treeType,
+			PriceList:            priceList,
+			Quantity:             quantity,
+			CreateDate:           createDate,
+			UpdateDate:           updateDate,
+			Transfered:           transfered,
+			DataSource:           dataSource,
+			UserSign:             userSign,
+			SCNCounter:           scnCounter,
+			DispCurr:             dispCurr,
+			ToWH:                 toWH,
+			Object:               object,
+			LogInstac:            logInstac,
+			UserSign2:            userSign2,
+			OcrCode:              ocrCode,
+			HideComp:             hideComp,
+			OcrCode2:             ocrCode2,
+			OcrCode3:             ocrCode3,
+			OcrCode4:             ocrCode4,
+			OcrCode5:             ocrCode5,
+			UpdateTime:           updateTime,
+			Project:              project,
+			PlAvgSize:            plAvgSize,
+			Name:                 name,
+			CreateTS:             createTS,
+			UpdateTS:             updateTS,
+			AtcEntry:             atcEntry,
+			Attachment:           attachment,
+			U_UPI_Ignore:         uUPIIgnore,
+			U_UPI_ProductionTree: uUPIProductionTree,
+			U_XIS_Comments:       uXISComments,
+			Lines:                make([]BomLineDTO, 0, 8),
+		}
 	}
 	if err := hRows.Err(); err != nil {
 		return nil, err
 	}
 	if len(headersByCode) == 0 {
-		// None of the requested SKUs had a BOM header
-		return []BomHeader{}, nil
+		return []BomHeaderDTO{}, nil
 	}
 
-	// 2) Fetch all lines for the requested SKUs (Father IN list)
+	// 2) Lines
 	linesSQL := fmt.Sprintf(`
 WITH ParentSkuList AS (
         %s
@@ -351,41 +395,81 @@ ORDER BY Father, VisOrder, ChildNum, Code
 	defer lRows.Close()
 
 	for lRows.Next() {
-		var l BomLine
+		var (
+			father, code                                         string
+			childNum, visOrder, priceList, logInstanc, stageId   *int64
+			quantity, price, origPrice, addQuantit               *float64
+			warehouse, currency, origCurr, issueMthd, uom        *string
+			comment, object, ocrCode, ocrCode2, ocrCode3         *string
+			ocrCode4, ocrCode5, prncpInput, project, typ, wipAct *string
+			lineText, itemName, uUPIBaseEl, uIsVisibleOnWebshop  *string
+			uInvCalc                                             *string
+		)
+
 		if err := lRows.Scan(
-			&l.Father, &l.ChildNum, &l.VisOrder, &l.Code, &l.Quantity, &l.Warehouse,
-			&l.Price, &l.Currency, &l.PriceList, &l.OrigPrice, &l.OrigCurr,
-			&l.IssueMthd, &l.Uom, &l.Comment, &l.LogInstanc, &l.Object, &l.OcrCode,
-			&l.OcrCode2, &l.OcrCode3, &l.OcrCode4, &l.OcrCode5, &l.PrncpInput,
-			&l.Project, &l.Type, &l.WipActCode, &l.AddQuantit, &l.LineText,
-			&l.StageId, &l.ItemName, &l.U_UPI_BaseEl, &l.U_IsVisibleOnWebshop,
-			&l.U_InvCalc,
+			&father, &childNum, &visOrder, &code, &quantity, &warehouse, &price, &currency,
+			&priceList, &origPrice, &origCurr, &issueMthd, &uom, &comment, &logInstanc,
+			&object, &ocrCode, &ocrCode2, &ocrCode3, &ocrCode4, &ocrCode5, &prncpInput,
+			&project, &typ, &wipAct, &addQuantit, &lineText, &stageId, &itemName,
+			&uUPIBaseEl, &uIsVisibleOnWebshop, &uInvCalc,
 		); err != nil {
 			return nil, err
 		}
-		if h, ok := headersByCode[l.Father]; ok {
-			h.Lines = append(h.Lines, l)
+
+		if h := headersByCode[father]; h != nil {
+			h.Lines = append(h.Lines, BomLineDTO{
+				Father:               father,
+				ChildNum:             childNum,
+				VisOrder:             visOrder,
+				Code:                 code,
+				Quantity:             quantity,
+				Warehouse:            warehouse,
+				Price:                price,
+				Currency:             currency,
+				PriceList:            priceList,
+				OrigPrice:            origPrice,
+				OrigCurr:             origCurr,
+				IssueMthd:            issueMthd,
+				Uom:                  uom,
+				Comment:              comment,
+				LogInstanc:           logInstanc,
+				Object:               object,
+				OcrCode:              ocrCode,
+				OcrCode2:             ocrCode2,
+				OcrCode3:             ocrCode3,
+				OcrCode4:             ocrCode4,
+				OcrCode5:             ocrCode5,
+				PrncpInput:           prncpInput,
+				Project:              project,
+				Type:                 typ,
+				WipActCode:           wipAct,
+				AddQuantit:           addQuantit,
+				LineText:             lineText,
+				StageId:              stageId,
+				ItemName:             itemName,
+				U_UPI_BaseEl:         uUPIBaseEl,
+				U_IsVisibleOnWebshop: uIsVisibleOnWebshop,
+				U_InvCalc:            uInvCalc,
+			})
 		}
 	}
 	if err := lRows.Err(); err != nil {
 		return nil, err
 	}
 
-	// 3) Build result slice in the same order as input SKUs (for determinism)
-	result := make([]BomHeader, 0, len(headersByCode))
-	seen := make(map[string]bool, len(headersByCode))
+	// 3) Result in input order
+	result := make([]BomHeaderDTO, 0, len(headersByCode))
+	seen := map[string]bool{}
 	for _, sku := range dto.Skus {
-		if h, ok := headersByCode[sku]; ok && !seen[sku] {
+		if h := headersByCode[sku]; h != nil && !seen[sku] {
 			result = append(result, *h)
 			seen[sku] = true
 		}
 	}
-	// Add any remaining headers not in input order (duplicates, etc.)
 	for code, h := range headersByCode {
 		if !seen[code] {
 			result = append(result, *h)
 		}
 	}
-
 	return result, nil
 }

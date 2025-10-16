@@ -20,7 +20,7 @@ func (service *ProductService) ProductServiceHandler(dto *ProductsDto) []Product
 	return result
 }
 
-func (service *ProductService) ProductTreeHandler(dto *ProductsTreeDto) []BomHeader {
+func (service *ProductService) ProductTreeHandler(dto *ProductsTreeDto) []BomHeaderDTO {
 	result, err := service.productRepository.GeTreeProducts(dto)
 	if err != nil {
 		fmt.Println("error", err.Error())

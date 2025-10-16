@@ -1,8 +1,6 @@
 package product
 
-import (
-	"database/sql"
-)
+import "time"
 
 type ProductsDto struct {
 	Skus      []string `json:"skus" validate:"required,min=1,dive,required"`
@@ -35,74 +33,75 @@ type Product struct {
 	PriceSource          string        `json:"priceSource"`
 	FinalPrice           float64       `json:"finalPrice"`
 }
-type BomHeader struct {
-	Code                 string
-	TreeType             string
-	PriceList            sql.NullInt64
-	Quantity             sql.NullFloat64 // note: OITT column is "Qauntity" (typo in DB); we scan it below
-	CreateDate           sql.NullTime
-	UpdateDate           sql.NullTime
-	Transfered           sql.NullString
-	DataSource           sql.NullString
-	UserSign             sql.NullInt64
-	SCNCounter           sql.NullInt64
-	DispCurr             sql.NullString
-	ToWH                 sql.NullString
-	Object               sql.NullString
-	LogInstac            sql.NullInt64
-	UserSign2            sql.NullInt64
-	OcrCode              sql.NullString
-	HideComp             sql.NullString
-	OcrCode2             sql.NullString
-	OcrCode3             sql.NullString
-	OcrCode4             sql.NullString
-	OcrCode5             sql.NullString
-	UpdateTime           sql.NullTime
-	Project              sql.NullString
-	PlAvgSize            sql.NullFloat64
-	Name                 sql.NullString
-	CreateTS             sql.NullTime
-	UpdateTS             sql.NullTime
-	AtcEntry             sql.NullInt64
-	Attachment           sql.NullInt64
-	U_UPI_Ignore         sql.NullString
-	U_UPI_ProductionTree sql.NullString
-	U_XIS_Comments       sql.NullString
 
-	Lines []BomLine
+type BomHeaderDTO struct {
+	Code                 string     `json:"Code"`
+	TreeType             string     `json:"TreeType"`
+	PriceList            *int64     `json:"PriceList,omitempty"`
+	Quantity             *float64   `json:"Quantity,omitempty"` // OITT column is "Qauntity"
+	CreateDate           *time.Time `json:"CreateDate,omitempty"`
+	UpdateDate           *time.Time `json:"UpdateDate,omitempty"`
+	Transfered           *string    `json:"Transfered,omitempty"`
+	DataSource           *string    `json:"DataSource,omitempty"`
+	UserSign             *int64     `json:"UserSign,omitempty"`
+	SCNCounter           *int64     `json:"SCNCounter,omitempty"`
+	DispCurr             *string    `json:"DispCurr,omitempty"`
+	ToWH                 *string    `json:"ToWH,omitempty"`
+	Object               *string    `json:"Object,omitempty"`
+	LogInstac            *int64     `json:"LogInstac,omitempty"`
+	UserSign2            *int64     `json:"UserSign2,omitempty"`
+	OcrCode              *string    `json:"OcrCode,omitempty"`
+	HideComp             *string    `json:"HideComp,omitempty"`
+	OcrCode2             *string    `json:"OcrCode2,omitempty"`
+	OcrCode3             *string    `json:"OcrCode3,omitempty"`
+	OcrCode4             *string    `json:"OcrCode4,omitempty"`
+	OcrCode5             *string    `json:"OcrCode5,omitempty"`
+	UpdateTime           *int64     `json:"UpdateTime,omitempty"` // HHMMSS int in B1
+	Project              *string    `json:"Project,omitempty"`
+	PlAvgSize            *float64   `json:"PlAvgSize,omitempty"`
+	Name                 *string    `json:"Name,omitempty"`
+	CreateTS             *int64     `json:"CreateTS,omitempty"` // HHMMSS int in B1
+	UpdateTS             *int64     `json:"UpdateTS,omitempty"` // HHMMSS int in B1
+	AtcEntry             *int64     `json:"AtcEntry,omitempty"`
+	Attachment           *int64     `json:"Attachment,omitempty"`
+	U_UPI_Ignore         *string    `json:"U_UPI_Ignore,omitempty"`
+	U_UPI_ProductionTree *string    `json:"U_UPI_ProductionTree,omitempty"`
+	U_XIS_Comments       *string    `json:"U_XIS_Comments,omitempty"`
+
+	Lines []BomLineDTO `json:"Lines"`
 }
 
-type BomLine struct {
-	Father               string
-	ChildNum             sql.NullInt64
-	VisOrder             sql.NullInt64
-	Code                 string
-	Quantity             sql.NullFloat64
-	Warehouse            sql.NullString
-	Price                sql.NullFloat64
-	Currency             sql.NullString
-	PriceList            sql.NullInt64
-	OrigPrice            sql.NullFloat64
-	OrigCurr             sql.NullString
-	IssueMthd            sql.NullString
-	Uom                  sql.NullString
-	Comment              sql.NullString
-	LogInstanc           sql.NullInt64
-	Object               sql.NullString
-	OcrCode              sql.NullString
-	OcrCode2             sql.NullString
-	OcrCode3             sql.NullString
-	OcrCode4             sql.NullString
-	OcrCode5             sql.NullString
-	PrncpInput           sql.NullString
-	Project              sql.NullString
-	Type                 sql.NullString
-	WipActCode           sql.NullString
-	AddQuantit           sql.NullFloat64
-	LineText             sql.NullString
-	StageId              sql.NullInt64
-	ItemName             sql.NullString
-	U_UPI_BaseEl         sql.NullString
-	U_IsVisibleOnWebshop sql.NullString
-	U_InvCalc            sql.NullString
+type BomLineDTO struct {
+	Father               string   `json:"Father"`
+	ChildNum             *int64   `json:"ChildNum,omitempty"`
+	VisOrder             *int64   `json:"VisOrder,omitempty"`
+	Code                 string   `json:"Code"`
+	Quantity             *float64 `json:"Quantity,omitempty"`
+	Warehouse            *string  `json:"Warehouse,omitempty"`
+	Price                *float64 `json:"Price,omitempty"`
+	Currency             *string  `json:"Currency,omitempty"`
+	PriceList            *int64   `json:"PriceList,omitempty"`
+	OrigPrice            *float64 `json:"OrigPrice,omitempty"`
+	OrigCurr             *string  `json:"OrigCurr,omitempty"`
+	IssueMthd            *string  `json:"IssueMthd,omitempty"`
+	Uom                  *string  `json:"Uom,omitempty"`
+	Comment              *string  `json:"Comment,omitempty"`
+	LogInstanc           *int64   `json:"LogInstanc,omitempty"`
+	Object               *string  `json:"Object,omitempty"`
+	OcrCode              *string  `json:"OcrCode,omitempty"`
+	OcrCode2             *string  `json:"OcrCode2,omitempty"`
+	OcrCode3             *string  `json:"OcrCode3,omitempty"`
+	OcrCode4             *string  `json:"OcrCode4,omitempty"`
+	OcrCode5             *string  `json:"OcrCode5,omitempty"`
+	PrncpInput           *string  `json:"PrncpInput,omitempty"`
+	Project              *string  `json:"Project,omitempty"`
+	Type                 *string  `json:"Type,omitempty"`
+	WipActCode           *string  `json:"WipActCode,omitempty"`
+	AddQuantit           *float64 `json:"AddQuantit,omitempty"`
+	LineText             *string  `json:"LineText,omitempty"`
+	StageId              *int64   `json:"StageId,omitempty"`
+	ItemName             *string  `json:"ItemName,omitempty"`
+	U_UPI_BaseEl         *string  `json:"U_UPI_BaseEl,omitempty"`
+	U_IsVisibleOnWebshop *string  `json:"U_IsVisibleOnWebshop,omitempty"`
+	U_InvCalc            *string  `json:"U_InvCalc,omitempty"`
 }
