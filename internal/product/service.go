@@ -19,3 +19,11 @@ func (service *ProductService) ProductServiceHandler(dto *ProductsDto) []Product
 	}
 	return result
 }
+
+func (service *ProductService) ProductTreeHandler(dto *ProductsTreeDto) []Product {
+	result, err := service.productRepository.GeTreeProducts(dto)
+	if err != nil {
+		fmt.Println("error", err.Error())
+	}
+	return result
+}

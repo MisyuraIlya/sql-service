@@ -24,6 +24,7 @@ func NewProductController(router *http.ServeMux, deps ProductControllerDeps) *Pr
 	}
 
 	router.Handle("POST /products", controller.GetProducts())
+	router.Handle("POST /productTree", controller.GetProductTree())
 	return controller
 }
 
@@ -35,6 +36,18 @@ func (Controller *ProductController) GetProducts() http.HandlerFunc {
 			return
 		}
 		data := Controller.ProductService.ProductServiceHandler(body)
+		res.Json(w, data, 200)
+
+	}
+}
+
+func (Controller *ProductController) GetProductTree() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, err := req.HandleBody[ProductsTreeDto](&w, r)
+		if err != nil {
+			return
+		}
+		data := Controller.ProductService.ProductTreeHandler(body)
 		res.Json(w, data, 200)
 
 	}

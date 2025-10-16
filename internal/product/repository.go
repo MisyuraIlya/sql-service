@@ -9,8 +9,6 @@ import (
 	"sql-service/pkg/db"
 )
 
-// ---- Null handling for JSON ----
-
 type MyNullFloat64 struct{ sql.NullFloat64 }
 
 func (n MyNullFloat64) MarshalJSON() ([]byte, error) {
@@ -28,8 +26,6 @@ func (s MyNullString) MarshalJSON() ([]byte, error) {
 	}
 	return []byte("null"), nil
 }
-
-// ---- Model ----
 
 type Product struct {
 	SKU                  string        `json:"sku"`
@@ -60,7 +56,6 @@ func (r *ProductRepository) GetProducts(dto *ProductsDto) ([]Product, error) {
 		return nil, fmt.Errorf("sku list cannot be empty")
 	}
 
-	// Build SkuList as UNION ALL to avoid (VALUES ...) parameter quirks
 	unionParts := make([]string, 0, len(dto.Skus))
 	args := []any{
 		sql.Named("cardCode", dto.CardCode),
@@ -285,4 +280,56 @@ ORDER BY BP.ItemCode;
 		return nil, err
 	}
 	return products, nil
+}
+
+func (r *ProductRepository) GeTreeProducts(dto *ProductsTreeDto) ([]Product, error) {
+	if len(dto.Skus) == 0 {
+		return nil, fmt.Errorf("sku list cannot be empty")
+	}
+
+	// Build UNION for parent SKUs (same style as your GetProducts)
+	unionParts := make([]string, 0, len(dto.Skus))
+	args := []any{}
+	for i, sku := range dto.Skus {
+		name := fmt.Sprintf("sku%d", i)
+		if i == 0 {
+			unionParts = append(unionParts, fmt.Sprintf("SELECT @%s AS sku", name))
+		} else {
+			unionParts = append(unionParts, fmt.Sprintf("UNION ALL SELECT @%s", name))
+		}
+		args = append(args, sql.Named(name, sku))
+	}
+	parentSkuUnion := strings.Join(unionParts, "\n        ")
+
+	query := fmt.Sprintf(`
+WITH ParentSkuList AS (
+        %s
+)
+SELECT DISTINCT
+       L.ItemCode AS sku
+FROM ITT1 AS L WITH (NOLOCK)
+JOIN OITT AS H WITH (NOLOCK)
+  ON H.Code = L.Code
+ AND H.TreeType = 'S'          -- Sales BOM
+WHERE L.Code IN (SELECT sku FROM ParentSkuList)
+ORDER BY L.ItemCode;`, parentSkuUnion)
+
+	rows, err := r.Db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	children := make([]Product, 0, 32)
+	for rows.Next() {
+		var sku string
+		if err := rows.Scan(&sku); err != nil {
+			return nil, err
+		}
+		children = append(children, Product{SKU: sku})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return children, nil
 }

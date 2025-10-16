@@ -7,3 +7,7 @@ type ProductsDto struct {
 	CardCode  string   `json:"cardCode" validate:"required"`
 	Date      string   `json:"date" validate:"required"`
 }
+
+type ProductsTreeDto struct {
+	Skus []string `json:"skus`
+}
