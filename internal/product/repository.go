@@ -301,17 +301,19 @@ func (r *ProductRepository) GeTreeProducts(dto *ProductsTreeDto) ([]Product, err
 	}
 	parentSkuUnion := strings.Join(unionParts, "\n        ")
 
+	// SQL Server: use GROUP BY + ORDER BY instead of DISTINCT + ORDER BY
 	query := fmt.Sprintf(`
 WITH ParentSkuList AS (
         %s
 )
-SELECT DISTINCT
+SELECT
        L.ItemCode AS sku
 FROM ITT1 AS L WITH (NOLOCK)
 JOIN OITT AS H WITH (NOLOCK)
   ON H.Code = L.Code
  AND H.TreeType = 'S'          -- Sales BOM
 WHERE L.Code IN (SELECT sku FROM ParentSkuList)
+GROUP BY L.ItemCode
 ORDER BY L.ItemCode;`, parentSkuUnion)
 
 	rows, err := r.Db.Query(query, args...)
@@ -331,5 +333,6 @@ ORDER BY L.ItemCode;`, parentSkuUnion)
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+
 	return children, nil
 }
