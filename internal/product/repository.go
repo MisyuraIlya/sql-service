@@ -287,7 +287,7 @@ func (r *ProductRepository) GeTreeProducts(dto *ProductsTreeDto) ([]Product, err
 		return nil, fmt.Errorf("sku list cannot be empty")
 	}
 
-	// Build UNION for parent SKUs (same style as your GetProducts)
+	// Build UNION for parent SKUs
 	unionParts := make([]string, 0, len(dto.Skus))
 	args := []any{}
 	for i, sku := range dto.Skus {
@@ -301,20 +301,21 @@ func (r *ProductRepository) GeTreeProducts(dto *ProductsTreeDto) ([]Product, err
 	}
 	parentSkuUnion := strings.Join(unionParts, "\n        ")
 
-	// SQL Server: use GROUP BY + ORDER BY instead of DISTINCT + ORDER BY
+	// ITT1: Father = parent, Code = child
+	// OITT: Code = parent, TreeType = 'S' (Sales BOM)
 	query := fmt.Sprintf(`
 WITH ParentSkuList AS (
         %s
 )
 SELECT
-       L.ItemCode AS sku
+       L.Code AS sku              -- child item code
 FROM ITT1 AS L WITH (NOLOCK)
 JOIN OITT AS H WITH (NOLOCK)
-  ON H.Code = L.Code
- AND H.TreeType = 'S'          -- Sales BOM
-WHERE L.Code IN (SELECT sku FROM ParentSkuList)
-GROUP BY L.ItemCode
-ORDER BY L.ItemCode;`, parentSkuUnion)
+  ON H.Code = L.Father
+ AND H.TreeType = 'S'            -- Sales BOM only
+WHERE L.Father IN (SELECT sku FROM ParentSkuList)
+GROUP BY L.Code
+ORDER BY L.Code;`, parentSkuUnion)
 
 	rows, err := r.Db.Query(query, args...)
 	if err != nil {
