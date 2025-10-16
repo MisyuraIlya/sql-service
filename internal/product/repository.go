@@ -9,7 +9,8 @@ import (
 	"sql-service/pkg/db"
 )
 
-// Null Handling for JSON
+// ---- Null handling for JSON ----
+
 type MyNullFloat64 struct{ sql.NullFloat64 }
 
 func (n MyNullFloat64) MarshalJSON() ([]byte, error) {
@@ -28,45 +29,45 @@ func (s MyNullString) MarshalJSON() ([]byte, error) {
 	return []byte("null"), nil
 }
 
-// Product Model (expanded to include new fields)
+// ---- Model ----
+
 type Product struct {
-	SKU            string        `json:"sku"`
-	CardCode       string        `json:"cardCode"`
-	PriceList      MyNullFloat64 `json:"priceList"` // ListNum (INT) exposed as float for null-handling; change to a nullable INT if you prefer
-	Currency       MyNullString  `json:"currency"`
-	PriceListPrice MyNullFloat64 `json:"priceListPrice"`
-	OSPPPrice      MyNullFloat64 `json:"osppPrice"`
-	OSPPDiscount   MyNullFloat64 `json:"osppDiscount"`
-	PromoDiscount  MyNullFloat64 `json:"promoDiscount"`
-	WarehouseCode  string        `json:"warehouseCode"`
-	Stock          MyNullFloat64 `json:"stock"`
-	OnOrder        MyNullFloat64 `json:"onOrder"`
-	Commited       MyNullFloat64 `json:"commited"`
-	PriceSource    string        `json:"priceSource"`
-	FinalPrice     float64       `json:"finalPrice"` // computed, not nullable in SELECT
+	SKU                  string        `json:"sku"`
+	CardCode             string        `json:"cardCode"`
+	PriceList            MyNullFloat64 `json:"priceList"`
+	Currency             MyNullString  `json:"currency"`
+	PriceListPrice       MyNullFloat64 `json:"priceListPrice"`
+	OSPPPrice            MyNullFloat64 `json:"osppPrice"`
+	OSPPDiscount         MyNullFloat64 `json:"osppDiscount"`
+	BPGroupDiscount      MyNullFloat64 `json:"bpGroupDiscount"`
+	ManufacturerName     MyNullString  `json:"manufacturerName"`
+	ManufacturerDiscount MyNullFloat64 `json:"manufacturerDiscount"`
+	PromoDiscount        MyNullFloat64 `json:"promoDiscount"`
+	WarehouseCode        string        `json:"warehouseCode"`
+	Stock                MyNullFloat64 `json:"stock"`
+	OnOrder              MyNullFloat64 `json:"onOrder"`
+	Commited             MyNullFloat64 `json:"commited"`
+	PriceSource          string        `json:"priceSource"`
+	FinalPrice           float64       `json:"finalPrice"`
 }
 
-// Repository
+// ---- Repository ----
+
 type ProductRepository struct{ Db *db.Db }
 
 func NewProductRepository(db *db.Db) *ProductRepository { return &ProductRepository{Db: db} }
 
-// GetProducts implements:
-// - Price list resolved from OCRD by CardCode
-// - OSPP (per-BP special prices/discounts) with validity window
-// - Promotional EDG/EDG1 (Type='A', ObjType='4') discount with validity window
-// - Stock (OITW) for requested warehouse
-// - Parameterized SKU list via (VALUES ...) to avoid SQL injection
 func (r *ProductRepository) GetProducts(dto *ProductsDto) ([]Product, error) {
 	if len(dto.Skus) == 0 {
 		return nil, fmt.Errorf("sku list cannot be empty")
 	}
-	// Build (VALUES ...) list parameterized as (@sku0), (@sku1), ...
+
 	vals := make([]string, len(dto.Skus))
 	args := []any{
 		sql.Named("cardCode", dto.CardCode),
-		sql.Named("asOfDate", dto.Date),       // DATE
-		sql.Named("warehouse", dto.WareHouse), // NVARCHAR/INT as per schema
+		sql.Named("userExtId", dto.CardCode),
+		sql.Named("asOfDate", dto.Date),
+		sql.Named("warehouse", dto.WareHouse),
 	}
 	for i, sku := range dto.Skus {
 		name := fmt.Sprintf("sku%d", i)
@@ -75,7 +76,6 @@ func (r *ProductRepository) GetProducts(dto *ProductsDto) ([]Product, error) {
 	}
 	skuValues := strings.Join(vals, ",")
 
-	// One batch with CTEs; resolve ListNum from OCRD; NOLOCK preserved to match your example
 	query := fmt.Sprintf(`
 WITH SkuList AS (
     SELECT v.sku FROM (VALUES %s) AS v(sku)
@@ -88,6 +88,7 @@ Cust AS (
 BasePrice AS (
     SELECT
         OITM.ItemCode,
+        OITM.FirmCode,                    -- Manufacturer code (OMRC.FirmCode)
         ITM1.Price    AS PriceListPrice,
         ITM1.Currency AS Currency
     FROM OITM WITH (NOLOCK)
@@ -98,7 +99,7 @@ BasePrice AS (
       AND OITM.ItemCode IN (SELECT sku FROM SkuList)
 ),
 SpecialPrice AS (
-    -- OSPP = special per BP
+    -- OSPP = special per BP (has validity window)
     SELECT
         P.ItemCode,
         P.ListNum,
@@ -112,23 +113,58 @@ SpecialPrice AS (
          OR (P.ValidFrom <= @asOfDate AND (P.ValidTo IS NULL OR P.ValidTo >= @asOfDate))
       )
 ),
+BPGroupDiscount AS (
+    -- BP-specific Discount Group rules (Type='S') - Manufacturer level (ObjType='43')
+    -- NOTE: no ValidFrom/ValidTo in OEDG; only ValidFor flag.
+    SELECT
+        BP.ItemCode,
+        MAX(E1.Discount) AS BPGroupDiscount
+    FROM BasePrice AS BP
+    INNER JOIN OEDG AS E WITH (NOLOCK)
+        ON E.Type = 'S'
+       AND E.ObjCode = @cardCode   -- rules defined for this BP
+       AND E.ValidFor = 'Y'
+    INNER JOIN EDG1 AS E1 WITH (NOLOCK)
+        ON E1.AbsEntry = E.AbsEntry
+       AND E1.ObjType = '43'       -- Manufacturer
+       AND TRY_CAST(E1.ObjKey AS INT) = BP.FirmCode
+    GROUP BY BP.ItemCode
+),
 PromoDiscount AS (
-    -- OEDG/EDG1 Type='A' item-level (ObjType='4')
+    -- Global promos: OEDG Type='A' with item lines (ObjType='4')
+    -- NOTE: no ValidFrom/ValidTo filters here either.
     SELECT
         I.ItemCode,
         E1.Discount AS PromoDiscount
     FROM OEDG AS E WITH (NOLOCK)
     INNER JOIN EDG1 AS E1 WITH (NOLOCK)
         ON E1.AbsEntry = E.AbsEntry
-       AND E1.ObjType = '4'
+       AND E1.ObjType = '4'        -- Item
     INNER JOIN OITM AS I WITH (NOLOCK)
         ON I.ItemCode = E1.ObjKey
     WHERE E.ValidFor = 'Y'
       AND E.Type = 'A'
-      AND (
-            (E.ValidForm IS NULL AND E.ValidTo IS NULL)
-         OR (E.ValidForm <= @asOfDate AND (E.ValidTo IS NULL OR E.ValidTo >= @asOfDate))
-      )
+),
+ManufacturerDiscount AS (
+    -- Per-item manufacturer discount for this userExtId:
+    -- 1) Take item -> FirmCode from OITM (via BasePrice)
+    -- 2) Find OEDG Type='S' rules for @userExtId with EDG1 ObjType='43' where ObjKey = FirmCode
+    -- 3) Return ManufacturerName + Discount per ItemCode
+    SELECT
+        BP.ItemCode,
+        M.FirmName             AS ManufacturerName,
+        E1.Discount            AS DiscountPercentage
+    FROM BasePrice AS BP
+    INNER JOIN OEDG AS E WITH (NOLOCK)
+        ON E.Type = 'S'
+       AND E.ObjCode = @userExtId   -- use external user id from params
+       AND E.ValidFor = 'Y'
+    INNER JOIN EDG1 AS E1 WITH (NOLOCK)
+        ON E1.AbsEntry = E.AbsEntry
+       AND E1.ObjType = '43'        -- Manufacturer
+       AND TRY_CAST(E1.ObjKey AS INT) = BP.FirmCode
+    LEFT JOIN OMRC AS M WITH (NOLOCK)
+        ON M.FirmCode = BP.FirmCode
 ),
 Stock AS (
     SELECT
@@ -148,6 +184,9 @@ SELECT
     CAST(BP.PriceListPrice AS DECIMAL(19,4))                         AS PriceListPrice,
     CAST(SP.OSPPPrice AS DECIMAL(19,4))                              AS OSPPPrice,
     CAST(SP.OSPPDiscount AS DECIMAL(19,4))                           AS OSPPDiscount,
+    CAST(BPG.BPGroupDiscount AS DECIMAL(19,4))                       AS BPGroupDiscount,
+    MD.ManufacturerName                                              AS ManufacturerName,
+    CAST(MD.DiscountPercentage AS DECIMAL(19,4))                     AS ManufacturerDiscount,
     CAST(PD.PromoDiscount AS DECIMAL(19,4))                          AS PromoDiscount,
     ISNULL(S.warehouseCode, '')                                      AS warehouseCode,
     CAST(S.stock AS DECIMAL(19,4))                                   AS stock,
@@ -156,6 +195,7 @@ SELECT
     CASE
         WHEN SP.OSPPPrice IS NOT NULL AND SP.OSPPPrice > 0 THEN N'OSPP explicit price'
         WHEN SP.OSPPDiscount IS NOT NULL THEN N'OSPP discount'
+        WHEN BPG.BPGroupDiscount IS NOT NULL THEN N'BP discount group (manufacturer)'
         WHEN PD.PromoDiscount IS NOT NULL THEN N'Promo (EDG Type A)'
         ELSE N'Base price list'
     END                                                              AS PriceSource,
@@ -165,6 +205,8 @@ SELECT
                 THEN SP.OSPPPrice
             WHEN SP.OSPPDiscount IS NOT NULL
                 THEN BP.PriceListPrice * (100.0 - SP.OSPPDiscount) / 100.0
+            WHEN BPG.BPGroupDiscount IS NOT NULL
+                THEN BP.PriceListPrice * (100.0 - BPG.BPGroupDiscount) / 100.0
             WHEN PD.PromoDiscount IS NOT NULL
                 THEN BP.PriceListPrice * (100.0 - PD.PromoDiscount) / 100.0
             ELSE BP.PriceListPrice
@@ -175,10 +217,14 @@ FROM BasePrice AS BP
 LEFT JOIN SpecialPrice AS SP
        ON SP.ItemCode = BP.ItemCode
       AND (SP.ListNum IS NULL OR SP.ListNum = (SELECT ListNum FROM Cust))
+LEFT JOIN BPGroupDiscount AS BPG
+       ON BPG.ItemCode = BP.ItemCode
 LEFT JOIN PromoDiscount AS PD
        ON PD.ItemCode = BP.ItemCode
 LEFT JOIN Stock AS S
        ON S.ItemCode = BP.ItemCode
+LEFT JOIN ManufacturerDiscount AS MD
+       ON MD.ItemCode = BP.ItemCode
 ORDER BY BP.ItemCode;
 `, skuValues)
 
@@ -199,6 +245,9 @@ ORDER BY BP.ItemCode;
 			&p.PriceListPrice,
 			&p.OSPPPrice,
 			&p.OSPPDiscount,
+			&p.BPGroupDiscount,
+			&p.ManufacturerName,
+			&p.ManufacturerDiscount,
 			&p.PromoDiscount,
 			&p.WarehouseCode,
 			&p.Stock,
