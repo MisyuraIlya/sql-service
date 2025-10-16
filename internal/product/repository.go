@@ -60,29 +60,29 @@ func (r *ProductRepository) GetProducts(dto *ProductsDto) ([]Product, error) {
 		return nil, fmt.Errorf("sku list cannot be empty")
 	}
 
-	vals := make([]string, len(dto.Skus))
+	// Build SkuList as UNION ALL to avoid (VALUES ...) parameter quirks
+	unionParts := make([]string, 0, len(dto.Skus))
 	args := []any{
 		sql.Named("cardCode", dto.CardCode),
 		sql.Named("userExtId", dto.CardCode),
 		sql.Named("asOfDate", dto.Date),
 		sql.Named("warehouse", dto.Warehouse),
 	}
+
 	for i, sku := range dto.Skus {
 		name := fmt.Sprintf("sku%d", i)
-		vals[i] = fmt.Sprintf("(@%s)", name)
+		if i == 0 {
+			unionParts = append(unionParts, fmt.Sprintf("SELECT @%s AS sku", name))
+		} else {
+			unionParts = append(unionParts, fmt.Sprintf("UNION ALL SELECT @%s", name))
+		}
 		args = append(args, sql.Named(name, sku))
 	}
-	skuValues := strings.Join(vals, ",")
+	skuUnion := strings.Join(unionParts, "\n        ")
 
-	// NOTE:
-	// - Adds CustGroup, AllDiscountRules, BestDiscountPerItem CTEs
-	// - OEDG: includes Type 'S' (specific BP) and 'C' (customer group), and global (-1/0)
-	// - EDG1: supports ObjType IN ('4','43','52') -> item/manufacturer/item-group
-	// - BestDiscountPerItem chooses most specific (item > manufacturer > item group), then highest percentage
-	// - Keeps Promo (Type='A') at item level
 	query := fmt.Sprintf(`
 WITH SkuList AS (
-    SELECT v.sku FROM (VALUES %s) AS v(sku)
+        %s
 ),
 Cust AS (
     SELECT TOP 1 T5.ListNum
@@ -97,7 +97,7 @@ CustGroup AS (
 BasePrice AS (
     SELECT
         OITM.ItemCode,
-        OITM.FirmCode,                    -- Manufacturer code (OMRC.FirmCode)
+        OITM.FirmCode,
         ITM1.Price    AS PriceListPrice,
         ITM1.Currency AS Currency
     FROM OITM WITH (NOLOCK)
@@ -108,7 +108,6 @@ BasePrice AS (
       AND OITM.ItemCode IN (SELECT sku FROM SkuList)
 ),
 SpecialPrice AS (
-    -- OSPP = special per BP (has validity window)
     SELECT
         P.ItemCode,
         P.ListNum,
@@ -122,14 +121,10 @@ SpecialPrice AS (
          OR (P.ValidFrom <= @asOfDate AND (P.ValidTo IS NULL OR P.ValidTo >= @asOfDate))
       )
 ),
--- Gather all discount rules relevant to this customer:
---  - E.Type in ('S','C') and global (-1/0)
---  - EDG1.ObjType in ('4' item, '43' manufacturer, '52' item group)
---  Map to current item via ItemCode / FirmCode / ItmsGrpCod
 AllDiscountRules AS (
     SELECT
         BP.ItemCode,
-        E.Type                   AS RuleType,      -- 'S' | 'C' (and we also allow global via condition below)
+        E.Type                   AS RuleType,
         E1.ObjType,
         E1.ObjKey,
         E1.Discount              AS DiscountPct,
@@ -157,7 +152,6 @@ AllDiscountRules AS (
        OR (E1.ObjType = '43' AND TRY_CAST(E1.ObjKey AS INT) = BP.FirmCode)
        OR (E1.ObjType = '52' AND TRY_CAST(E1.ObjKey AS INT) = OITM.ItmsGrpCod)
 ),
--- Pick the most specific (item > manufacturer > item group). At same level choose the highest %.
 BestDiscountPerItem AS (
     SELECT ItemCode,
            DiscountPct,
@@ -182,7 +176,6 @@ BestDiscountPerItem AS (
     ) X
     WHERE rn = 1
 ),
--- Global promos: OEDG Type='A' with item lines (ObjType='4')
 PromoDiscount AS (
     SELECT
         I.ItemCode,
@@ -190,7 +183,7 @@ PromoDiscount AS (
     FROM OEDG AS E WITH (NOLOCK)
     INNER JOIN EDG1 AS E1 WITH (NOLOCK)
         ON E1.AbsEntry = E.AbsEntry
-       AND E1.ObjType = '4'        -- Item
+       AND E1.ObjType = '4'
     INNER JOIN OITM AS I WITH (NOLOCK)
         ON I.ItemCode = E1.ObjKey
     WHERE E.ValidFor = 'Y'
@@ -214,28 +207,21 @@ SELECT
     CAST(BP.PriceListPrice AS DECIMAL(19,4))                         AS PriceListPrice,
     CAST(SP.OSPPPrice AS DECIMAL(19,4))                              AS OSPPPrice,
     CAST(SP.OSPPDiscount AS DECIMAL(19,4))                           AS OSPPDiscount,
-
-    -- Use the chosen best discount as "bpGroupDiscount" to keep API stable
     CAST(BD.DiscountPct AS DECIMAL(19,4))                            AS BPGroupDiscount,
-
-    -- Manufacturer columns kept for compatibility; null when using BD
     CAST(NULL AS NVARCHAR(255))                                      AS ManufacturerName,
     CAST(NULL AS DECIMAL(19,4))                                      AS ManufacturerDiscount,
-
     CAST(PD.PromoDiscount AS DECIMAL(19,4))                          AS PromoDiscount,
     ISNULL(S.warehouseCode, '')                                      AS warehouseCode,
     CAST(S.stock AS DECIMAL(19,4))                                   AS stock,
     CAST(S.onOrder AS DECIMAL(19,4))                                 AS onOrder,
     CAST(S.commited AS DECIMAL(19,4))                                AS commited,
-
     CASE
         WHEN SP.OSPPPrice IS NOT NULL AND SP.OSPPPrice > 0 THEN N'OSPP explicit price'
         WHEN SP.OSPPDiscount IS NOT NULL THEN N'OSPP discount'
-        WHEN BD.DiscountPct IS NOT NULL THEN BD.RuleSource           -- e.g., 'Discount group (item/manufacturer/item group)'
+        WHEN BD.DiscountPct IS NOT NULL THEN BD.RuleSource
         WHEN PD.PromoDiscount IS NOT NULL THEN N'Promo (EDG Type A)'
         ELSE N'Base price list'
     END                                                              AS PriceSource,
-
     CAST(
         CASE
             WHEN SP.OSPPPrice IS NOT NULL AND SP.OSPPPrice > 0
@@ -261,7 +247,7 @@ LEFT JOIN PromoDiscount AS PD
 LEFT JOIN Stock AS S
        ON S.ItemCode = BP.ItemCode
 ORDER BY BP.ItemCode;
-`, skuValues)
+`, skuUnion)
 
 	rows, err := r.Db.Query(query, args...)
 	if err != nil {
