@@ -3,31 +3,10 @@ package documents
 import (
 	"context"
 	"database/sql"
-	"time"
 
 	"sql-service/pkg/db"
 )
 
-// DTO for passing filter parameters into GetCartesset
-
-// Cartesset represents one row of the result set
-type Cartesset struct {
-	CreateDate time.Time `json:"createDate"`
-	DueDate    time.Time `json:"dueDate"`
-	DocType    string    `json:"docType"`
-	BaseRef    string    `json:"baseRef"`
-	Ref1       string    `json:"ref1"`
-	Ref2       string    `json:"ref2"`
-	TransId    int       `json:"transId"`
-	ShortName  string    `json:"shortName"`
-	Memo       string    `json:"memo"`
-	Debit      float64   `json:"debit"`
-	Credit     float64   `json:"credit"`
-	CardCode   string    `json:"cardCode"`
-	CardName   string    `json:"cardName"`
-}
-
-// Repository holds your DB connection
 type DocumentRrepository struct {
 	Db *db.Db
 }
@@ -36,7 +15,6 @@ func NewDocumentRepository(db *db.Db) *DocumentRrepository {
 	return &DocumentRrepository{Db: db}
 }
 
-// GetCartesset fetches all matching documents for the given card and date range.
 func (r *DocumentRrepository) GetCartesset(dto *CartessetDto) ([]Cartesset, error) {
 	const query = `
     SELECT
@@ -101,6 +79,50 @@ func (r *DocumentRrepository) GetCartesset(dto *CartessetDto) ([]Cartesset, erro
 			return nil, err
 		}
 		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (r *DocumentRrepository) GetOpenProducts() ([]OpenProducts, error) {
+	const query = `
+SELECT
+    r.ItemCode,
+    SUM(r.OpenQty) AS TotalOpenQty,
+    STRING_AGG(CONVERT(varchar(20), o.DocNum), ', ') AS DocNumbers
+FROM RDR1 r
+JOIN ORDR o ON o.DocEntry = r.DocEntry
+WHERE r.LineStatus = 'O'
+  AND o.CANCELED = 'N'
+GROUP BY r.ItemCode
+ORDER BY r.ItemCode;
+`
+	ctx := context.Background()
+
+	rows, err := r.Db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []OpenProducts
+	for rows.Next() {
+		var (
+			itemCode     string
+			totalOpenQty float64
+			docNumbers   string
+		)
+		if err := rows.Scan(&itemCode, &totalOpenQty, &docNumbers); err != nil {
+			return nil, err
+		}
+
+		out = append(out, OpenProducts{
+			ItemCode:     itemCode,
+			TotalOpenQty: int(totalOpenQty),
+			DocNumbers:   docNumbers,
+		})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

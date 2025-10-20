@@ -24,6 +24,7 @@ func NewDocumentController(router *http.ServeMux, deps DocumentControllerDeps) *
 	}
 
 	router.Handle("POST /cartesset", controller.GetCartesset())
+	router.Handle("GET /openProducts", controller.OpenProducts())
 	return controller
 }
 
@@ -35,6 +36,14 @@ func (Controller *DocumentController) GetCartesset() http.HandlerFunc {
 			return
 		}
 		data := Controller.DocumentService.DocumentServiceHandler(body)
+		res.Json(w, data, 200)
+
+	}
+}
+
+func (Controller *DocumentController) OpenProducts() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		data := Controller.DocumentService.OpenProducts()
 		res.Json(w, data, 200)
 
 	}
