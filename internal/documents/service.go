@@ -20,8 +20,8 @@ func (service *DocumentService) DocumentServiceHandler(dto *CartessetDto) []Cart
 	return result
 }
 
-func (service *DocumentService) OpenProducts() []OpenProducts {
-	result, err := service.documentRrepository.GetOpenProducts()
+func (service *DocumentService) OpenProducts(dto *AllProductsDto) []OpenProducts {
+	result, err := service.documentRrepository.GetOpenProducts(dto)
 	if err != nil {
 		fmt.Println("error", err.Error())
 	}

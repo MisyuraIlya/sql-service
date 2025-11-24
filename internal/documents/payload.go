@@ -8,6 +8,10 @@ type CartessetDto struct {
 	DateTo   string `json:dateTo`
 }
 
+type AllProductsDto struct {
+	UserExtId string `json:userExtId`
+}
+
 type Cartesset struct {
 	CreateDate time.Time `json:"createDate"`
 	DueDate    time.Time `json:"dueDate"`

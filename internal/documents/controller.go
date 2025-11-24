@@ -43,7 +43,11 @@ func (Controller *DocumentController) GetCartesset() http.HandlerFunc {
 
 func (Controller *DocumentController) OpenProducts() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		data := Controller.DocumentService.OpenProducts()
+		body, err := req.HandleBody[AllProductsDto](&w, r)
+		if err != nil {
+			return
+		}
+		data := Controller.DocumentService.OpenProducts(body)
 		res.Json(w, data, 200)
 
 	}

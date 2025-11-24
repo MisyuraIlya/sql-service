@@ -86,22 +86,27 @@ func (r *DocumentRrepository) GetCartesset(dto *CartessetDto) ([]Cartesset, erro
 	return out, nil
 }
 
-func (r *DocumentRrepository) GetOpenProducts() ([]OpenProducts, error) {
+func (r *DocumentRrepository) GetOpenProducts(dto *AllProductsDto) ([]OpenProducts, error) {
 	const query = `
-SELECT
-    r.ItemCode,
-    SUM(r.OpenQty) AS TotalOpenQty,
-    STRING_AGG(CONVERT(varchar(20), o.DocNum), ', ') AS DocNumbers
-FROM RDR1 r
-JOIN ORDR o ON o.DocEntry = r.DocEntry
-WHERE r.LineStatus = 'O'
-  AND o.CANCELED = 'N'
-GROUP BY r.ItemCode
-ORDER BY r.ItemCode;
-`
+		SELECT
+			r.ItemCode,
+			SUM(r.OpenQty) AS TotalOpenQty,
+			STRING_AGG(CONVERT(varchar(20), o.DocNum), ', ') AS DocNumbers
+		FROM RDR1 r
+		JOIN ORDR o ON o.DocEntry = r.DocEntry
+		WHERE r.LineStatus = 'O'
+		AND o.CANCELED = 'N'
+		AND o.CardCode = @cardCode
+		GROUP BY r.ItemCode
+		ORDER BY r.ItemCode;
+	`
 	ctx := context.Background()
 
-	rows, err := r.Db.QueryContext(ctx, query)
+	rows, err := r.Db.QueryContext(
+		ctx,
+		query,
+		sql.Named("cardCode", dto.UserExtId),
+	)
 	if err != nil {
 		return nil, err
 	}
