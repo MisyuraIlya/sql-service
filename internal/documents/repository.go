@@ -90,21 +90,21 @@ func (r *DocumentRrepository) GetOpenProducts(dto *AllProductsDto) ([]OpenProduc
 	const query = `
 SELECT
     r.ItemCode,
-    SUM(r.OpenQty) AS TotalOpenQty,
-    STRING_AGG(CONVERT(varchar(20), o.DocNum), ', ') AS DocNumbers,
-    STRING_AGG(ISNULL(o.NumAtCard, ''), ', ') AS NumAtCard,
-    STRING_AGG(CONVERT(varchar(10), o.DocDate, 23), ', ') AS OrderDocDates,
-    STRING_AGG(CONVERT(varchar(10), r.DocDate, 23), ', ') AS LineDocDates,
-    STRING_AGG(ISNULL(r.U_AvailStat, ''), ', ') AS AvailStatuses,
-    STRING_AGG(ISNULL(r.FreeTxt, ''), ' | ') AS FreeTexts
+    r.OpenQty AS TotalOpenQty,
+    CONVERT(varchar(20), o.DocNum)       AS DocNumbers,
+    ISNULL(o.NumAtCard, '')              AS NumAtCard,
+    CONVERT(varchar(10), o.DocDate, 23)  AS OrderDocDates,
+    CONVERT(varchar(10), r.DocDate, 23)  AS LineDocDates,
+    ISNULL(r.U_AvailStat, '')            AS AvailStatuses,
+    ISNULL(r.FreeTxt, '')                AS FreeTexts
 FROM RDR1 r
 JOIN ORDR o ON o.DocEntry = r.DocEntry
 WHERE r.LineStatus = 'O'
   AND o.CANCELED = 'N'
   AND o.CardCode = @cardCode
-GROUP BY r.ItemCode
-ORDER BY r.ItemCode;
+ORDER BY r.ItemCode, o.DocNum;
 `
+
 	ctx := context.Background()
 
 	rows, err := r.Db.QueryContext(
@@ -145,7 +145,7 @@ ORDER BY r.ItemCode;
 
 		out = append(out, OpenProducts{
 			ItemCode:      itemCode,
-			TotalOpenQty:  int(totalOpenQty),
+			TotalOpenQty:  int(totalOpenQty), // per line
 			DocNumbers:    docNumbers,
 			NumAtCard:     numAtCard,
 			OrderDocDates: orderDocDates,
