@@ -88,18 +88,23 @@ func (r *DocumentRrepository) GetCartesset(dto *CartessetDto) ([]Cartesset, erro
 
 func (r *DocumentRrepository) GetOpenProducts(dto *AllProductsDto) ([]OpenProducts, error) {
 	const query = `
-		SELECT
-			r.ItemCode,
-			SUM(r.OpenQty) AS TotalOpenQty,
-			STRING_AGG(CONVERT(varchar(20), o.DocNum), ', ') AS DocNumbers
-		FROM RDR1 r
-		JOIN ORDR o ON o.DocEntry = r.DocEntry
-		WHERE r.LineStatus = 'O'
-		AND o.CANCELED = 'N'
-		AND o.CardCode = @cardCode
-		GROUP BY r.ItemCode
-		ORDER BY r.ItemCode;
-	`
+SELECT
+    r.ItemCode,
+    SUM(r.OpenQty) AS TotalOpenQty,
+    STRING_AGG(CONVERT(varchar(20), o.DocNum), ', ') AS DocNumbers,
+    STRING_AGG(ISNULL(o.NumAtCard, ''), ', ') AS NumAtCard,
+    STRING_AGG(CONVERT(varchar(10), o.DocDate, 23), ', ') AS OrderDocDates,
+    STRING_AGG(CONVERT(varchar(10), r.DocDate, 23), ', ') AS LineDocDates,
+    STRING_AGG(ISNULL(r.U_AvailStat, ''), ', ') AS AvailStatuses,
+    STRING_AGG(ISNULL(r.FreeTxt, ''), ' | ') AS FreeTexts
+FROM RDR1 r
+JOIN ORDR o ON o.DocEntry = r.DocEntry
+WHERE r.LineStatus = 'O'
+  AND o.CANCELED = 'N'
+  AND o.CardCode = @cardCode
+GROUP BY r.ItemCode
+ORDER BY r.ItemCode;
+`
 	ctx := context.Background()
 
 	rows, err := r.Db.QueryContext(
@@ -115,22 +120,44 @@ func (r *DocumentRrepository) GetOpenProducts(dto *AllProductsDto) ([]OpenProduc
 	var out []OpenProducts
 	for rows.Next() {
 		var (
-			itemCode     string
-			totalOpenQty float64
-			docNumbers   string
+			itemCode      string
+			totalOpenQty  float64
+			docNumbers    string
+			numAtCard     string
+			orderDocDates string
+			lineDocDates  string
+			availStatuses string
+			freeTexts     string
 		)
-		if err := rows.Scan(&itemCode, &totalOpenQty, &docNumbers); err != nil {
+
+		if err := rows.Scan(
+			&itemCode,
+			&totalOpenQty,
+			&docNumbers,
+			&numAtCard,
+			&orderDocDates,
+			&lineDocDates,
+			&availStatuses,
+			&freeTexts,
+		); err != nil {
 			return nil, err
 		}
 
 		out = append(out, OpenProducts{
-			ItemCode:     itemCode,
-			TotalOpenQty: int(totalOpenQty),
-			DocNumbers:   docNumbers,
+			ItemCode:      itemCode,
+			TotalOpenQty:  int(totalOpenQty),
+			DocNumbers:    docNumbers,
+			NumAtCard:     numAtCard,
+			OrderDocDates: orderDocDates,
+			LineDocDates:  lineDocDates,
+			AvailStatuses: availStatuses,
+			FreeTexts:     freeTexts,
 		})
 	}
+
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+
 	return out, nil
 }

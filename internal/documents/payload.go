@@ -29,7 +29,12 @@ type Cartesset struct {
 }
 
 type OpenProducts struct {
-	ItemCode     string `json:"itemCode"`
-	TotalOpenQty int    `json:totalOpenQty`
-	DocNumbers   string `json:DocNumber`
+	ItemCode      string `json:"itemCode"`
+	TotalOpenQty  int    `json:"totalOpenQty"`
+	DocNumbers    string `json:"docNumbers"`
+	NumAtCard     string `json:"numAtCard"`
+	OrderDocDates string `json:"orderDocDates"`
+	LineDocDates  string `json:"lineDocDates"`
+	AvailStatuses string `json:"availStatuses"`
+	FreeTexts     string `json:"freeTexts"`
 }
