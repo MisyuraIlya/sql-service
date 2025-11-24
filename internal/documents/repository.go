@@ -88,22 +88,22 @@ func (r *DocumentRrepository) GetCartesset(dto *CartessetDto) ([]Cartesset, erro
 
 func (r *DocumentRrepository) GetOpenProducts(dto *AllProductsDto) ([]OpenProducts, error) {
 	const query = `
-SELECT
-    r.ItemCode,
-    r.OpenQty AS TotalOpenQty,
-    CONVERT(varchar(20), o.DocNum)       AS DocNumbers,
-    ISNULL(o.NumAtCard, '')              AS NumAtCard,
-    CONVERT(varchar(10), o.DocDate, 23)  AS OrderDocDates,
-    CONVERT(varchar(10), r.DocDate, 23)  AS LineDocDates,
-    ISNULL(r.U_AvailStat, '')            AS AvailStatuses,
-    ISNULL(r.FreeTxt, '')                AS FreeTexts
-FROM RDR1 r
-JOIN ORDR o ON o.DocEntry = r.DocEntry
-WHERE r.LineStatus = 'O'
-  AND o.CANCELED = 'N'
-  AND o.CardCode = @cardCode
-ORDER BY r.ItemCode, o.DocNum;
-`
+		SELECT
+			r.ItemCode,
+			r.OpenQty AS TotalOpenQty,
+			CONVERT(varchar(20), o.DocNum)       AS DocNumbers,
+			ISNULL(o.NumAtCard, '')              AS NumAtCard,
+			CONVERT(varchar(10), o.DocDate, 23)  AS OrderDocDates,
+			CONVERT(varchar(10), r.DocDate, 23)  AS LineDocDates,
+			ISNULL(r.U_AvailStat, '')            AS AvailStatuses,
+			ISNULL(r.FreeTxt, '')                AS FreeTexts
+		FROM RDR1 r
+		JOIN ORDR o ON o.DocEntry = r.DocEntry
+		WHERE r.LineStatus = 'O'
+		AND o.CANCELED = 'N'
+		AND o.CardCode = @cardCode
+		ORDER BY r.ItemCode, o.DocNum;
+	`
 
 	ctx := context.Background()
 
