@@ -263,7 +263,7 @@ ORDER BY BP.ItemCode;
 	return products, nil
 }
 
-func (r *ProductRepository) GeTreeProducts(dto *ProductsTreeDto) ([]BomHeaderDTO, error) {
+func (r *ProductRepository) GeTreeProducts(dto *ProductSkusDto) ([]BomHeaderDTO, error) {
 	if len(dto.Skus) == 0 {
 		return nil, fmt.Errorf("sku list cannot be empty")
 	}
@@ -471,5 +471,141 @@ ORDER BY Father, VisOrder, ChildNum, Code
 			result = append(result, *h)
 		}
 	}
+	return result, nil
+}
+
+func (r *ProductRepository) GetProductStocksData(dto *ProductSkusStockDto) ([]ProductStock, error) {
+	if len(dto.Skus) == 0 {
+		return nil, fmt.Errorf("sku list cannot be empty")
+	}
+	if dto.Warehouse == "" {
+		return nil, fmt.Errorf("warehouse is required")
+	}
+
+	// Build UNION list of requested SKUs as parameters
+	unionParts := make([]string, 0, len(dto.Skus))
+	args := make([]any, 0, len(dto.Skus)+1)
+
+	// first arg: warehouse
+	args = append(args, sql.Named("warehouse", dto.Warehouse))
+
+	for i, sku := range dto.Skus {
+		name := fmt.Sprintf("sku%d", i)
+		if i == 0 {
+			unionParts = append(unionParts, fmt.Sprintf("SELECT @%s AS sku", name))
+		} else {
+			unionParts = append(unionParts, fmt.Sprintf("UNION ALL SELECT @%s", name))
+		}
+		args = append(args, sql.Named(name, sku))
+	}
+	parentSkuUnion := strings.Join(unionParts, "\n        ")
+
+	// SQL:
+	// - ParentSkuList: requested SKUs
+	// - TreeParents: those that are TreeType = 'S' in OITT
+	// - ParentChildren: tree parents + their children from ITT1
+	// - AllItemsForStock:
+	//     * non-tree parents -> themselves
+	//     * tree parents -> their children
+	// - StockRaw: stock rows from OITW for all items in AllItemsForStock in this warehouse
+	// - StockPerParentRows: row_number over OnHand desc per parent (pick max stock)
+	query := fmt.Sprintf(`
+WITH ParentSkuList AS (
+        %s
+),
+TreeParents AS (
+    SELECT P.sku AS ParentCode
+    FROM ParentSkuList AS P
+    INNER JOIN OITT AS H WITH (NOLOCK)
+        ON H.Code = P.sku
+       AND H.TreeType = 'S'
+),
+ParentChildren AS (
+    SELECT H.Code AS ParentCode,
+           L.Code AS ChildCode
+    FROM OITT AS H WITH (NOLOCK)
+    INNER JOIN ITT1 AS L WITH (NOLOCK)
+        ON L.Father = H.Code
+    WHERE H.TreeType = 'S'
+      AND H.Code IN (SELECT sku FROM ParentSkuList)
+),
+AllItemsForStock AS (
+    -- Non-tree parents use their own stock
+    SELECT P.sku AS ParentCode,
+           P.sku AS ItemCodeToCheck
+    FROM ParentSkuList AS P
+    WHERE P.sku NOT IN (SELECT ParentCode FROM TreeParents)
+
+    UNION ALL
+
+    -- Tree parents use their children stocks
+    SELECT C.ParentCode,
+           C.ChildCode AS ItemCodeToCheck
+    FROM ParentChildren AS C
+),
+StockRaw AS (
+    SELECT
+        W.ItemCode,
+        W.WhsCode,
+        W.OnHand,
+        W.OnOrder,
+        W.IsCommited
+    FROM OITW AS W WITH (NOLOCK)
+    WHERE W.WhsCode = @warehouse
+      AND W.ItemCode IN (SELECT ItemCodeToCheck FROM AllItemsForStock)
+),
+StockPerParentRows AS (
+    SELECT
+        A.ParentCode,
+        S.ItemCode,
+        S.WhsCode,
+        S.OnHand,
+        S.OnOrder,
+        S.IsCommited,
+        ROW_NUMBER() OVER (
+            PARTITION BY A.ParentCode
+            ORDER BY S.OnHand DESC
+        ) AS rn
+    FROM AllItemsForStock AS A
+    LEFT JOIN StockRaw AS S
+      ON S.ItemCode = A.ItemCodeToCheck
+)
+SELECT
+    P.sku AS sku,
+    COALESCE(SPR.WhsCode, @warehouse) AS warehouseCode,
+    CAST(SPR.OnHand AS DECIMAL(19,4))    AS stock,
+    CAST(SPR.OnOrder AS DECIMAL(19,4))   AS onOrder,
+    CAST(SPR.IsCommited AS DECIMAL(19,4)) AS commited
+FROM ParentSkuList AS P
+LEFT JOIN StockPerParentRows AS SPR
+    ON SPR.ParentCode = P.sku
+   AND SPR.rn = 1
+ORDER BY P.sku;
+`, parentSkuUnion)
+
+	rows, err := r.Db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []ProductStock
+	for rows.Next() {
+		var ps ProductStock
+		if err := rows.Scan(
+			&ps.SKU,
+			&ps.WarehouseCode,
+			&ps.Stock,
+			&ps.OnOrder,
+			&ps.Commited,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, ps)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	return result, nil
 }

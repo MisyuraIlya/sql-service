@@ -10,8 +10,13 @@ type ProductsDto struct {
 	Date      string   `json:"date" validate:"required"`
 }
 
-type ProductsTreeDto struct {
-	Skus []string `json:"skus`
+type ProductSkusStockDto struct {
+	Skus      []string `json:"skus" validate:"required,min=1,dive,required"`
+	Warehouse string   `json:"warehouse" validate:"required"`
+}
+
+type ProductSkusDto struct {
+	Skus []string `json:"skus" validate:"required,min=1,dive,required"`
 }
 
 type Product struct {
@@ -32,6 +37,15 @@ type Product struct {
 	Commited             MyNullFloat64 `json:"commited"`
 	PriceSource          string        `json:"priceSource"`
 	FinalPrice           float64       `json:"finalPrice"`
+}
+
+// Result type for stock endpoint
+type ProductStock struct {
+	SKU           string        `json:"sku"`
+	WarehouseCode string        `json:"warehouseCode"`
+	Stock         MyNullFloat64 `json:"stock"`
+	OnOrder       MyNullFloat64 `json:"onOrder"`
+	Commited      MyNullFloat64 `json:"commited"`
 }
 
 type BomHeaderDTO struct {

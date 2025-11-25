@@ -20,8 +20,16 @@ func (service *ProductService) ProductServiceHandler(dto *ProductsDto) []Product
 	return result
 }
 
-func (service *ProductService) ProductTreeHandler(dto *ProductsTreeDto) []BomHeaderDTO {
+func (service *ProductService) ProductTreeHandler(dto *ProductSkusDto) []BomHeaderDTO {
 	result, err := service.productRepository.GeTreeProducts(dto)
+	if err != nil {
+		fmt.Println("error", err.Error())
+	}
+	return result
+}
+
+func (service *ProductService) ProductStocks(dto *ProductSkusStockDto) []ProductStock {
+	result, err := service.productRepository.GetProductStocksData(dto)
 	if err != nil {
 		fmt.Println("error", err.Error())
 	}
