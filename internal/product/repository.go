@@ -165,15 +165,74 @@ PromoDiscount AS (
     WHERE E.ValidFor = 'Y'
       AND E.Type = 'A'
 ),
-Stock AS (
+
+-- === BOM / stock logic (same idea as GetProductStocksData) ===
+TreeParents AS (
+    SELECT S.sku AS ParentCode
+    FROM SkuList AS S
+    INNER JOIN OITT AS H WITH (NOLOCK)
+        ON H.Code = S.sku
+       AND H.TreeType = 'S'
+),
+ParentChildren AS (
+    SELECT H.Code AS ParentCode,
+           L.Code AS ChildCode
+    FROM OITT AS H WITH (NOLOCK)
+    INNER JOIN ITT1 AS L WITH (NOLOCK)
+        ON L.Father = H.Code
+    WHERE H.TreeType = 'S'
+      AND H.Code IN (SELECT sku FROM SkuList)
+),
+AllItemsForStock AS (
+    -- Non-tree parents: use own stock
+    SELECT S.sku AS ParentCode,
+           S.sku AS ItemCodeToCheck
+    FROM SkuList AS S
+    WHERE S.sku NOT IN (SELECT ParentCode FROM TreeParents)
+
+    UNION ALL
+
+    -- Tree parents: use children
+    SELECT C.ParentCode,
+           C.ChildCode AS ItemCodeToCheck
+    FROM ParentChildren AS C
+),
+StockRaw AS (
     SELECT
         W.ItemCode,
-        W.WhsCode    AS warehouseCode,
-        W.OnHand     AS stock,
-        W.OnOrder    AS onOrder,
-        W.IsCommited AS commited
+        W.WhsCode,
+        W.OnHand,
+        W.OnOrder,
+        W.IsCommited
     FROM OITW AS W WITH (NOLOCK)
     WHERE W.WhsCode = @warehouse
+      AND W.ItemCode IN (SELECT ItemCodeToCheck FROM AllItemsForStock)
+),
+StockPerParentRows AS (
+    SELECT
+        A.ParentCode,
+        S.ItemCode,
+        S.WhsCode,
+        S.OnHand,
+        S.OnOrder,
+        S.IsCommited,
+        ROW_NUMBER() OVER (
+            PARTITION BY A.ParentCode
+            ORDER BY S.OnHand DESC
+        ) AS rn
+    FROM AllItemsForStock AS A
+    LEFT JOIN StockRaw AS S
+      ON S.ItemCode = A.ItemCodeToCheck
+),
+Stock AS (
+    SELECT
+        SPR.ParentCode AS ItemCode,
+        SPR.WhsCode    AS warehouseCode,
+        SPR.OnHand     AS stock,
+        SPR.OnOrder    AS onOrder,
+        SPR.IsCommited AS commited
+    FROM StockPerParentRows AS SPR
+    WHERE SPR.rn = 1
 )
 SELECT
     BP.ItemCode                                                      AS sku,
