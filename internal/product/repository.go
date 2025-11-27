@@ -284,6 +284,20 @@ LEFT JOIN Stock AS S
 ORDER BY BP.ItemCode;
 `, skuUnion)
 
+	// ===== DEBUG DUMP OF SQL + PARAMS =====
+	fmt.Println("====== GetProducts SQL ======")
+	fmt.Println(query)
+	fmt.Println("====== GetProducts ARGS =====")
+	for _, a := range args {
+		if na, ok := a.(sql.NamedArg); ok {
+			fmt.Printf("@%s = %v\n", na.Name, na.Value)
+		} else {
+			fmt.Printf("%T: %v\n", a, a)
+		}
+	}
+	fmt.Println("====== END GetProducts DUMP =====")
+	// ======================================
+
 	rows, err := r.Db.Query(query, args...)
 	if err != nil {
 		return nil, err
@@ -559,15 +573,6 @@ func (r *ProductRepository) GetProductStocksData(dto *ProductSkusStockDto) ([]Pr
 	}
 	parentSkuUnion := strings.Join(unionParts, "\n        ")
 
-	// SQL:
-	// - ParentSkuList: requested SKUs
-	// - TreeParents: those that are TreeType = 'S' in OITT
-	// - ParentChildren: tree parents + their children from ITT1
-	// - AllItemsForStock:
-	//     * non-tree parents -> themselves
-	//     * tree parents -> their children
-	// - StockRaw: stock rows from OITW for all items in AllItemsForStock in this warehouse
-	// - StockPerParentRows: row_number over OnHand desc per parent (pick max stock)
 	query := fmt.Sprintf(`
 WITH ParentSkuList AS (
         %s
