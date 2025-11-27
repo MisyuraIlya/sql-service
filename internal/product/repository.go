@@ -46,7 +46,7 @@ func (r *ProductRepository) GetProducts(dto *ProductsDto) ([]Product, error) {
 	args := []any{
 		sql.Named("cardCode", dto.CardCode),
 		sql.Named("userExtId", dto.CardCode),
-		sql.Named("asOfDate", dto.Date),
+		sql.Named("asOfDate", dto.Date), // later you can change this to time.Time
 		sql.Named("warehouse", dto.Warehouse),
 	}
 
@@ -286,11 +286,10 @@ LEFT JOIN PromoDiscount AS PD
        ON PD.ItemCode = BP.ItemCode
 LEFT JOIN Stock AS S
        ON S.ItemCode = BP.ItemCode
-ORDER BY BP.ItemCode;
+ORDER BY BP.ItemCode
 OPTION (RECOMPILE);
 `, skuUnion)
 
-	// Optional: SQL + args dump (keep if you like)
 	log.Println("====== GetProducts SQL ======")
 	log.Println(query)
 	log.Println("====== GetProducts ARGS =====")
