@@ -39,7 +39,6 @@ type Product struct {
 	FinalPrice           float64       `json:"finalPrice"`
 }
 
-// Result type for stock endpoint
 type ProductStock struct {
 	SKU           string        `json:"sku"`
 	WarehouseCode string        `json:"warehouseCode"`
@@ -52,7 +51,7 @@ type BomHeaderDTO struct {
 	Code                 string     `json:"Code"`
 	TreeType             string     `json:"TreeType"`
 	PriceList            *int64     `json:"PriceList,omitempty"`
-	Quantity             *float64   `json:"Quantity,omitempty"` // OITT column is "Qauntity"
+	Quantity             *float64   `json:"Quantity,omitempty"`
 	CreateDate           *time.Time `json:"CreateDate,omitempty"`
 	UpdateDate           *time.Time `json:"UpdateDate,omitempty"`
 	Transfered           *string    `json:"Transfered,omitempty"`
@@ -70,12 +69,12 @@ type BomHeaderDTO struct {
 	OcrCode3             *string    `json:"OcrCode3,omitempty"`
 	OcrCode4             *string    `json:"OcrCode4,omitempty"`
 	OcrCode5             *string    `json:"OcrCode5,omitempty"`
-	UpdateTime           *int64     `json:"UpdateTime,omitempty"` // HHMMSS int in B1
+	UpdateTime           *int64     `json:"UpdateTime,omitempty"`
 	Project              *string    `json:"Project,omitempty"`
 	PlAvgSize            *float64   `json:"PlAvgSize,omitempty"`
 	Name                 *string    `json:"Name,omitempty"`
-	CreateTS             *int64     `json:"CreateTS,omitempty"` // HHMMSS int in B1
-	UpdateTS             *int64     `json:"UpdateTS,omitempty"` // HHMMSS int in B1
+	CreateTS             *int64     `json:"CreateTS,omitempty"`
+	UpdateTS             *int64     `json:"UpdateTS,omitempty"`
 	AtcEntry             *int64     `json:"AtcEntry,omitempty"`
 	Attachment           *int64     `json:"Attachment,omitempty"`
 	U_UPI_Ignore         *string    `json:"U_UPI_Ignore,omitempty"`

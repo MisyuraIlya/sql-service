@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -33,6 +34,10 @@ type ProductRepository struct{ Db *db.Db }
 func NewProductRepository(db *db.Db) *ProductRepository { return &ProductRepository{Db: db} }
 
 func (r *ProductRepository) GetProducts(dto *ProductsDto) ([]Product, error) {
+	totalStart := time.Now()
+	log.Printf("GetProducts: start, skus=%d, cardCode=%s, warehouse=%s, date=%s",
+		len(dto.Skus), dto.CardCode, dto.Warehouse, dto.Date)
+
 	if len(dto.Skus) == 0 {
 		return nil, fmt.Errorf("sku list cannot be empty")
 	}
@@ -284,26 +289,29 @@ LEFT JOIN Stock AS S
 ORDER BY BP.ItemCode;
 `, skuUnion)
 
-	// ===== DEBUG DUMP OF SQL + PARAMS =====
-	fmt.Println("====== GetProducts SQL ======")
-	fmt.Println(query)
-	fmt.Println("====== GetProducts ARGS =====")
+	// Optional: SQL + args dump (keep if you like)
+	log.Println("====== GetProducts SQL ======")
+	log.Println(query)
+	log.Println("====== GetProducts ARGS =====")
 	for _, a := range args {
 		if na, ok := a.(sql.NamedArg); ok {
-			fmt.Printf("@%s = %v\n", na.Name, na.Value)
+			log.Printf("@%s = %v\n", na.Name, na.Value)
 		} else {
-			fmt.Printf("%T: %v\n", a, a)
+			log.Printf("%T: %v\n", a, a)
 		}
 	}
-	fmt.Println("====== END GetProducts DUMP =====")
-	// ======================================
+	log.Println("====== END GetProducts DUMP =====")
 
+	queryStart := time.Now()
 	rows, err := r.Db.Query(query, args...)
 	if err != nil {
+		log.Printf("GetProducts: Query() error after %s: %v", time.Since(queryStart), err)
 		return nil, err
 	}
+	log.Printf("GetProducts: Query() took %s", time.Since(queryStart))
 	defer rows.Close()
 
+	scanStart := time.Now()
 	var products []Product
 	for rows.Next() {
 		var p Product
@@ -326,22 +334,30 @@ ORDER BY BP.ItemCode;
 			&p.PriceSource,
 			&p.FinalPrice,
 		); err != nil {
+			log.Printf("GetProducts: scan error after %s: %v", time.Since(scanStart), err)
 			return nil, err
 		}
 		products = append(products, p)
 	}
+	log.Printf("GetProducts: scan loop took %s, rows=%d", time.Since(scanStart), len(products))
+
 	if err := rows.Err(); err != nil {
+		log.Printf("GetProducts: rows.Err(): %v", err)
 		return nil, err
 	}
+
+	log.Printf("GetProducts: DONE total=%s, rows=%d", time.Since(totalStart), len(products))
 	return products, nil
 }
 
 func (r *ProductRepository) GeTreeProducts(dto *ProductSkusDto) ([]BomHeaderDTO, error) {
+	totalStart := time.Now()
+	log.Printf("GeTreeProducts: start, skus=%d", len(dto.Skus))
+
 	if len(dto.Skus) == 0 {
 		return nil, fmt.Errorf("sku list cannot be empty")
 	}
 
-	// Build UNION list of SKUs as parameters
 	unionParts := make([]string, 0, len(dto.Skus))
 	args := make([]any, 0, len(dto.Skus))
 	for i, sku := range dto.Skus {
@@ -355,7 +371,6 @@ func (r *ProductRepository) GeTreeProducts(dto *ProductSkusDto) ([]BomHeaderDTO,
 	}
 	parentSkuUnion := strings.Join(unionParts, "\n        ")
 
-	// 1) Headers
 	headersSQL := fmt.Sprintf(`
 WITH ParentSkuList AS (
         %s
@@ -370,15 +385,18 @@ FROM OITT WITH (NOLOCK)
 WHERE Code IN (SELECT sku FROM ParentSkuList)
 `, parentSkuUnion)
 
+	hQueryStart := time.Now()
 	hRows, err := r.Db.Query(headersSQL, args...)
 	if err != nil {
+		log.Printf("GeTreeProducts: headers Query() error after %s: %v", time.Since(hQueryStart), err)
 		return nil, err
 	}
+	log.Printf("GeTreeProducts: headers Query() took %s", time.Since(hQueryStart))
 	defer hRows.Close()
 
 	headersByCode := make(map[string]*BomHeaderDTO, len(dto.Skus))
+	hScanStart := time.Now()
 	for hRows.Next() {
-		// Declare pointer variables for scanning
 		var (
 			code, treeType                                string
 			priceList, userSign, scnCounter, logInstac    *int64
@@ -388,7 +406,7 @@ WHERE Code IN (SELECT sku FROM ParentSkuList)
 			object, ocrCode, hideComp, ocrCode2, ocrCode3 *string
 			ocrCode4, ocrCode5, project, name             *string
 			userSign2, atcEntry, attachment               *int64
-			updateTime, createTS, updateTS                *int64 // int HHMMSS
+			updateTime, createTS, updateTS                *int64
 			uUPIIgnore, uUPIProductionTree, uXISComments  *string
 		)
 
@@ -399,6 +417,7 @@ WHERE Code IN (SELECT sku FROM ParentSkuList)
 			&updateTime, &project, &plAvgSize, &name, &createTS, &updateTS, &atcEntry,
 			&attachment, &uUPIIgnore, &uUPIProductionTree, &uXISComments,
 		); err != nil {
+			log.Printf("GeTreeProducts: headers scan error: %v", err)
 			return nil, err
 		}
 
@@ -438,14 +457,17 @@ WHERE Code IN (SELECT sku FROM ParentSkuList)
 			Lines:                make([]BomLineDTO, 0, 8),
 		}
 	}
+	log.Printf("GeTreeProducts: headers scan loop took %s, headers=%d", time.Since(hScanStart), len(headersByCode))
+
 	if err := hRows.Err(); err != nil {
+		log.Printf("GeTreeProducts: headers rows.Err(): %v", err)
 		return nil, err
 	}
 	if len(headersByCode) == 0 {
+		log.Printf("GeTreeProducts: no headers found, total=%s", time.Since(totalStart))
 		return []BomHeaderDTO{}, nil
 	}
 
-	// 2) Lines
 	linesSQL := fmt.Sprintf(`
 WITH ParentSkuList AS (
         %s
@@ -461,12 +483,17 @@ WHERE Father IN (SELECT sku FROM ParentSkuList)
 ORDER BY Father, VisOrder, ChildNum, Code
 `, parentSkuUnion)
 
+	lQueryStart := time.Now()
 	lRows, err := r.Db.Query(linesSQL, args...)
 	if err != nil {
+		log.Printf("GeTreeProducts: lines Query() error after %s: %v", time.Since(lQueryStart), err)
 		return nil, err
 	}
+	log.Printf("GeTreeProducts: lines Query() took %s", time.Since(lQueryStart))
 	defer lRows.Close()
 
+	lScanStart := time.Now()
+	lineCount := 0
 	for lRows.Next() {
 		var (
 			father, code                                         string
@@ -486,8 +513,10 @@ ORDER BY Father, VisOrder, ChildNum, Code
 			&project, &typ, &wipAct, &addQuantit, &lineText, &stageId, &itemName,
 			&uUPIBaseEl, &uIsVisibleOnWebshop, &uInvCalc,
 		); err != nil {
+			log.Printf("GeTreeProducts: lines scan error: %v", err)
 			return nil, err
 		}
+		lineCount++
 
 		if h := headersByCode[father]; h != nil {
 			h.Lines = append(h.Lines, BomLineDTO{
@@ -526,11 +555,13 @@ ORDER BY Father, VisOrder, ChildNum, Code
 			})
 		}
 	}
+	log.Printf("GeTreeProducts: lines scan loop took %s, lines=%d", time.Since(lScanStart), lineCount)
+
 	if err := lRows.Err(); err != nil {
+		log.Printf("GeTreeProducts: lines rows.Err(): %v", err)
 		return nil, err
 	}
 
-	// 3) Result in input order
 	result := make([]BomHeaderDTO, 0, len(headersByCode))
 	seen := map[string]bool{}
 	for _, sku := range dto.Skus {
@@ -544,10 +575,17 @@ ORDER BY Father, VisOrder, ChildNum, Code
 			result = append(result, *h)
 		}
 	}
+
+	log.Printf("GeTreeProducts: DONE total=%s, headers=%d, lines=%d",
+		time.Since(totalStart), len(result), lineCount)
+
 	return result, nil
 }
 
 func (r *ProductRepository) GetProductStocksData(dto *ProductSkusStockDto) ([]ProductStock, error) {
+	totalStart := time.Now()
+	log.Printf("GetProductStocksData: start, skus=%d, warehouse=%s", len(dto.Skus), dto.Warehouse)
+
 	if len(dto.Skus) == 0 {
 		return nil, fmt.Errorf("sku list cannot be empty")
 	}
@@ -555,11 +593,9 @@ func (r *ProductRepository) GetProductStocksData(dto *ProductSkusStockDto) ([]Pr
 		return nil, fmt.Errorf("warehouse is required")
 	}
 
-	// Build UNION list of requested SKUs as parameters
 	unionParts := make([]string, 0, len(dto.Skus))
 	args := make([]any, 0, len(dto.Skus)+1)
 
-	// first arg: warehouse
 	args = append(args, sql.Named("warehouse", dto.Warehouse))
 
 	for i, sku := range dto.Skus {
@@ -647,12 +683,16 @@ LEFT JOIN StockPerParentRows AS SPR
 ORDER BY P.sku;
 `, parentSkuUnion)
 
+	qStart := time.Now()
 	rows, err := r.Db.Query(query, args...)
 	if err != nil {
+		log.Printf("GetProductStocksData: Query() error after %s: %v", time.Since(qStart), err)
 		return nil, err
 	}
+	log.Printf("GetProductStocksData: Query() took %s", time.Since(qStart))
 	defer rows.Close()
 
+	scanStart := time.Now()
 	var result []ProductStock
 	for rows.Next() {
 		var ps ProductStock
@@ -663,13 +703,18 @@ ORDER BY P.sku;
 			&ps.OnOrder,
 			&ps.Commited,
 		); err != nil {
+			log.Printf("GetProductStocksData: scan error: %v", err)
 			return nil, err
 		}
 		result = append(result, ps)
 	}
+	log.Printf("GetProductStocksData: scan loop took %s, rows=%d", time.Since(scanStart), len(result))
+
 	if err := rows.Err(); err != nil {
+		log.Printf("GetProductStocksData: rows.Err(): %v", err)
 		return nil, err
 	}
 
+	log.Printf("GetProductStocksData: DONE total=%s, rows=%d", time.Since(totalStart), len(result))
 	return result, nil
 }
