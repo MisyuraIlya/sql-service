@@ -287,6 +287,7 @@ LEFT JOIN PromoDiscount AS PD
 LEFT JOIN Stock AS S
        ON S.ItemCode = BP.ItemCode
 ORDER BY BP.ItemCode;
+OPTION (RECOMPILE);
 `, skuUnion)
 
 	// Optional: SQL + args dump (keep if you like)
