@@ -171,7 +171,7 @@ PromoDiscount AS (
       AND E.Type = 'A'
 ),
 
--- === BOM / stock logic (same idea as GetProductStocksData) ===
+-- === BOM / stock logic (now uses MIN stock of children) ===
 TreeParents AS (
     SELECT S.sku AS ParentCode
     FROM SkuList AS S
@@ -223,7 +223,9 @@ StockPerParentRows AS (
         S.IsCommited,
         ROW_NUMBER() OVER (
             PARTITION BY A.ParentCode
-            ORDER BY S.OnHand DESC
+            ORDER BY
+                CASE WHEN S.OnHand IS NULL THEN 1 ELSE 0 END,
+                S.OnHand ASC
         ) AS rn
     FROM AllItemsForStock AS A
     LEFT JOIN StockRaw AS S
@@ -638,7 +640,7 @@ AllItemsForStock AS (
 
     UNION ALL
 
-    -- Tree parents use their children stocks
+    -- Tree parents use their children stocks (parent stock = MIN child stock)
     SELECT C.ParentCode,
            C.ChildCode AS ItemCodeToCheck
     FROM ParentChildren AS C
@@ -664,7 +666,9 @@ StockPerParentRows AS (
         S.IsCommited,
         ROW_NUMBER() OVER (
             PARTITION BY A.ParentCode
-            ORDER BY S.OnHand DESC
+            ORDER BY
+                CASE WHEN S.OnHand IS NULL THEN 1 ELSE 0 END,
+                S.OnHand ASC
         ) AS rn
     FROM AllItemsForStock AS A
     LEFT JOIN StockRaw AS S
@@ -672,10 +676,10 @@ StockPerParentRows AS (
 )
 SELECT
     P.sku AS sku,
-    COALESCE(SPR.WhsCode, @warehouse) AS warehouseCode,
-    CAST(SPR.OnHand AS DECIMAL(19,4))    AS stock,
-    CAST(SPR.OnOrder AS DECIMAL(19,4))   AS onOrder,
-    CAST(SPR.IsCommited AS DECIMAL(19,4)) AS commited
+    COALESCE(SPR.WhsCode, @warehouse)      AS warehouseCode,
+    CAST(SPR.OnHand AS DECIMAL(19,4))      AS stock,
+    CAST(SPR.OnOrder AS DECIMAL(19,4))     AS onOrder,
+    CAST(SPR.IsCommited AS DECIMAL(19,4))  AS commited
 FROM ParentSkuList AS P
 LEFT JOIN StockPerParentRows AS SPR
     ON SPR.ParentCode = P.sku
