@@ -46,7 +46,7 @@ func (r *ProductRepository) GetProducts(dto *ProductsDto) ([]Product, error) {
 	args := []any{
 		sql.Named("cardCode", dto.CardCode),
 		sql.Named("userExtId", dto.CardCode),
-		sql.Named("asOfDate", dto.Date), // later you can change this to time.Time
+		sql.Named("asOfDate", dto.Date), // you can later change this to time.Time
 		sql.Named("warehouse", dto.Warehouse),
 	}
 
@@ -98,8 +98,8 @@ SpecialPrice AS (
     WHERE P.CardCode = @cardCode
       AND P.Valid = 'Y'
       AND (
-            (P.ValidFrom IS NULL AND P.ValidTo IS NULL)
-         OR (P.ValidFrom <= @asOfDate AND (P.ValidTo IS NULL OR P.ValidTo >= @asOfDate))
+            (P.ValidFrom IS NULL OR P.ValidFrom <= @asOfDate)
+        AND (P.ValidTo   IS NULL OR P.ValidTo   >= @asOfDate)
       )
 ),
 AllDiscountRules AS (
@@ -117,12 +117,24 @@ AllDiscountRules AS (
     FROM BasePrice AS BP
     CROSS JOIN CustGroup
     INNER JOIN OEDG AS E WITH (NOLOCK)
-        ON E.ValidFor = 'Y'
-       AND (
+        ON (
              (E.Type = 'S' AND E.ObjCode = @cardCode)
           OR (E.Type = 'C' AND E.ObjCode = CONVERT(NVARCHAR, CustGroup.GroupCode))
           OR (E.ObjType = '-1' AND E.ObjCode = '0') -- global rule
           )
+       AND (
+            -- No date restriction → always valid
+            E.ValidFor = 'N'
+            OR
+            -- Has validity period → must match @asOfDate
+            (
+                E.ValidFor = 'Y'
+                AND (
+                        (E.ValidForm IS NULL OR E.ValidForm <= @asOfDate)
+                    AND (E.ValidTo   IS NULL OR E.ValidTo   >= @asOfDate)
+                )
+            )
+       )
     INNER JOIN EDG1 AS E1 WITH (NOLOCK)
         ON E1.AbsEntry = E.AbsEntry
        AND E1.ObjType IN ('4','43','52')
@@ -167,11 +179,20 @@ PromoDiscount AS (
        AND E1.ObjType = '4'
     INNER JOIN OITM AS I WITH (NOLOCK)
         ON I.ItemCode = E1.ObjKey
-    WHERE E.ValidFor = 'Y'
-      AND E.Type = 'A'
+    WHERE E.Type = 'A'
+      AND (
+            E.ValidFor = 'N'
+         OR (
+                E.ValidFor = 'Y'
+            AND (
+                    (E.ValidForm IS NULL OR E.ValidForm <= @asOfDate)
+                AND (E.ValidTo   IS NULL OR E.ValidTo   >= @asOfDate)
+            )
+         )
+      )
 ),
 
--- === BOM / stock logic (now uses MIN stock of children) ===
+-- === BOM / stock logic (MIN stock of children) ===
 TreeParents AS (
     SELECT S.sku AS ParentCode
     FROM SkuList AS S

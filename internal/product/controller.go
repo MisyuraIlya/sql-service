@@ -1,6 +1,7 @@
 package product
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"time"
@@ -43,6 +44,13 @@ func (Controller *ProductController) GetProducts() http.HandlerFunc {
 			return
 		}
 		log.Printf("[/products] body parsed (elapsed=%s), skus=%d", time.Since(reqStart), len(body.Skus))
+
+		// 🔽 dump full body as JSON
+		if payload, err := json.Marshal(body); err == nil {
+			log.Printf("[/products] request body dump: %s", string(payload))
+		} else {
+			log.Printf("[/products] failed to marshal body for logging: %v", err)
+		}
 
 		data := Controller.ProductService.ProductServiceHandler(body)
 		log.Printf("[/products] service done (elapsed=%s), rows=%d", time.Since(reqStart), len(data))
