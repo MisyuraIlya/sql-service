@@ -46,7 +46,7 @@ func (r *ProductRepository) GetProducts(dto *ProductsDto) ([]Product, error) {
 	args := []any{
 		sql.Named("cardCode", dto.CardCode),
 		sql.Named("userExtId", dto.CardCode),
-		sql.Named("asOfDate", dto.Date), // later you can change this to time.Time
+		sql.Named("asOfDate", dto.Date),
 		sql.Named("warehouse", dto.Warehouse),
 	}
 
@@ -350,7 +350,7 @@ OPTION (RECOMPILE);
 			&p.OSPPPrice,
 			&p.OSPPDiscount,
 			&p.BPGroupDiscount,
-			&p.BPGroupDiscountType, // NEW FIELD
+			&p.BPGroupDiscountType,
 			&p.ManufacturerName,
 			&p.ManufacturerDiscount,
 			&p.PromoDiscount,
