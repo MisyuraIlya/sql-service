@@ -28,6 +28,7 @@ type Product struct {
 	OSPPPrice            MyNullFloat64 `json:"osppPrice"`
 	OSPPDiscount         MyNullFloat64 `json:"osppDiscount"`
 	BPGroupDiscount      MyNullFloat64 `json:"bpGroupDiscount"`
+	BPGroupDiscountType  MyNullString  `json:"bpGroupDiscountType"`
 	ManufacturerName     MyNullString  `json:"manufacturerName"`
 	ManufacturerDiscount MyNullFloat64 `json:"manufacturerDiscount"`
 	PromoDiscount        MyNullFloat64 `json:"promoDiscount"`

@@ -46,7 +46,7 @@ func (r *ProductRepository) GetProducts(dto *ProductsDto) ([]Product, error) {
 	args := []any{
 		sql.Named("cardCode", dto.CardCode),
 		sql.Named("userExtId", dto.CardCode),
-		sql.Named("asOfDate", dto.Date), // you can later change this to time.Time
+		sql.Named("asOfDate", dto.Date), // later you can change this to time.Time
 		sql.Named("warehouse", dto.Warehouse),
 	}
 
@@ -148,12 +148,14 @@ AllDiscountRules AS (
 BestDiscountPerItem AS (
     SELECT ItemCode,
            DiscountPct,
-           RuleSource
+           RuleSource,
+           RuleType
     FROM (
         SELECT
             R.ItemCode,
             R.DiscountPct,
             R.RuleSource,
+            R.RuleType,
             ROW_NUMBER() OVER (
                 PARTITION BY R.ItemCode
                 ORDER BY
@@ -271,6 +273,7 @@ SELECT
     CAST(SP.OSPPPrice AS DECIMAL(19,4))                              AS OSPPPrice,
     CAST(SP.OSPPDiscount AS DECIMAL(19,4))                           AS OSPPDiscount,
     CAST(BD.DiscountPct AS DECIMAL(19,4))                            AS BPGroupDiscount,
+    CAST(BD.RuleType AS NVARCHAR(1))                                 AS BPGroupDiscountType,
     CAST(NULL AS NVARCHAR(255))                                      AS ManufacturerName,
     CAST(NULL AS DECIMAL(19,4))                                      AS ManufacturerDiscount,
     CAST(PD.PromoDiscount AS DECIMAL(19,4))                          AS PromoDiscount,
@@ -347,6 +350,7 @@ OPTION (RECOMPILE);
 			&p.OSPPPrice,
 			&p.OSPPDiscount,
 			&p.BPGroupDiscount,
+			&p.BPGroupDiscountType, // NEW FIELD
 			&p.ManufacturerName,
 			&p.ManufacturerDiscount,
 			&p.PromoDiscount,
