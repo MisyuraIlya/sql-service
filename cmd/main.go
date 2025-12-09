@@ -52,7 +52,7 @@ func App() http.Handler {
 func main() {
 	app := App()
 	server := http.Server{
-		Addr:    ":2224",
+		Addr:    ":2222",
 		Handler: app,
 	}
 	fmt.Println("Server is listening on port 2222")
