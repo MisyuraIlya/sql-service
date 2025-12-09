@@ -123,11 +123,8 @@ AllDiscountRules AS (
           OR (E.ObjType = '-1' AND E.ObjCode = '0') -- global rule
           )
        AND (
-            -- No date restriction → always valid
             E.ValidFor = 'N'
-            OR
-            -- Has validity period → must match @asOfDate
-            (
+            OR (
                 E.ValidFor = 'Y'
                 AND (
                         (E.ValidForm IS NULL OR E.ValidForm <= @asOfDate)
@@ -145,32 +142,54 @@ AllDiscountRules AS (
        OR (E1.ObjType = '43' AND TRY_CAST(E1.ObjKey AS INT) = BP.FirmCode)
        OR (E1.ObjType = '52' AND TRY_CAST(E1.ObjKey AS INT) = OITM.ItmsGrpCod)
 ),
-BestDiscountPerItem AS (
-    SELECT ItemCode,
-           DiscountPct,
-           RuleSource,
-           RuleType
-    FROM (
-        SELECT
-            R.ItemCode,
-            R.DiscountPct,
-            R.RuleSource,
-            R.RuleType,
-            ROW_NUMBER() OVER (
-                PARTITION BY R.ItemCode
-                ORDER BY
-                    CASE R.ObjType
-                        WHEN '4'  THEN 1
-                        WHEN '43' THEN 2
-                        WHEN '52' THEN 3
-                        ELSE 4
-                    END,
-                    R.DiscountPct DESC
-            ) AS rn
-        FROM AllDiscountRules AS R
-    ) X
-    WHERE rn = 1
+
+-- BP discount mode from OCRD.DiscRel (S/A/H/L/M)
+BpDiscountMode AS (
+    SELECT
+        ISNULL(NULLIF(C.DiscRel, ''), 'H') AS DiscountMode
+    FROM OCRD AS C WITH (NOLOCK)
+    WHERE C.CardCode = @cardCode
 ),
+
+-- Aggregate all discount rules per item according to DiscountMode
+BestDiscountPerItem AS (
+    SELECT
+        R.ItemCode,
+        Mode.DiscountMode,
+        CASE Mode.DiscountMode
+            WHEN 'H' THEN MAX(R.DiscountPct)
+            WHEN 'L' THEN MIN(R.DiscountPct)
+            WHEN 'A' THEN AVG(R.DiscountPct)
+            WHEN 'S' THEN
+                CASE
+                    WHEN SUM(R.DiscountPct) > 100.0 THEN 100.0
+                    ELSE SUM(R.DiscountPct)
+                END
+            WHEN 'M' THEN
+                CASE
+                    -- if any rule has discount >= 100 → effective discount = 100
+                    WHEN MAX(CASE WHEN R.DiscountPct >= 100 THEN 1 ELSE 0 END) = 1
+                        THEN 100.0
+                    ELSE
+                        100.0 * (
+                            1.0 - EXP(
+                                SUM(
+                                    CASE
+                                        WHEN R.DiscountPct IS NULL OR R.DiscountPct >= 100
+                                            THEN 0.0
+                                        ELSE LOG((100.0 - R.DiscountPct) / 100.0)
+                                    END
+                                )
+                            )
+                        )
+                END
+            ELSE MAX(R.DiscountPct)
+        END AS DiscountPct
+    FROM AllDiscountRules AS R
+    CROSS JOIN BpDiscountMode AS Mode
+    GROUP BY R.ItemCode, Mode.DiscountMode
+),
+
 PromoDiscount AS (
     SELECT
         I.ItemCode,
@@ -273,7 +292,7 @@ SELECT
     CAST(SP.OSPPPrice AS DECIMAL(19,4))                              AS OSPPPrice,
     CAST(SP.OSPPDiscount AS DECIMAL(19,4))                           AS OSPPDiscount,
     CAST(BD.DiscountPct AS DECIMAL(19,4))                            AS BPGroupDiscount,
-    CAST(BD.RuleType AS NVARCHAR(1))                                 AS BPGroupDiscountType,
+    CAST(BD.DiscountMode AS NVARCHAR(1))                             AS BPGroupDiscountType,
     CAST(NULL AS NVARCHAR(255))                                      AS ManufacturerName,
     CAST(NULL AS DECIMAL(19,4))                                      AS ManufacturerDiscount,
     CAST(PD.PromoDiscount AS DECIMAL(19,4))                          AS PromoDiscount,
@@ -284,7 +303,15 @@ SELECT
     CASE
         WHEN SP.OSPPPrice IS NOT NULL AND SP.OSPPPrice > 0 THEN N'OSPP explicit price'
         WHEN SP.OSPPDiscount IS NOT NULL THEN N'OSPP discount'
-        WHEN BD.DiscountPct IS NOT NULL THEN BD.RuleSource
+        WHEN BD.DiscountPct IS NOT NULL THEN
+            CASE BD.DiscountMode
+                WHEN 'H' THEN N'Discount groups (highest)'
+                WHEN 'L' THEN N'Discount groups (lowest)'
+                WHEN 'A' THEN N'Discount groups (average)'
+                WHEN 'S' THEN N'Discount groups (sum)'
+                WHEN 'M' THEN N'Discount groups (mixed)'
+                ELSE N'Discount groups'
+            END
         WHEN PD.PromoDiscount IS NOT NULL THEN N'Promo (EDG Type A)'
         ELSE N'Base price list'
     END                                                              AS PriceSource,
