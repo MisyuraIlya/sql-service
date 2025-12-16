@@ -27,5 +27,8 @@ func (service *DocumentService) OpenProducts(dto *AllProductsDto) []OpenProducts
 		fmt.Println("error", err.Error())
 		return []OpenProducts{} // ✅ never nil
 	}
+	if result == nil {
+		return []OpenProducts{} // ✅ extra safety
+	}
 	return result
 }

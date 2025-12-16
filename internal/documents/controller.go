@@ -52,20 +52,30 @@ func (Controller *DocumentController) GetCartesset() http.HandlerFunc {
 
 func (Controller *DocumentController) OpenProducts() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Helpful debug
+		// (if you have logs) log.Printf("OpenProducts: method=%s content-type=%s", r.Method, r.Header.Get("Content-Type"))
+
 		body, err := req.HandleBody[AllProductsDto](&w, r)
 		if err != nil {
+			// IMPORTANT: your HandleBody might already write response,
+			// but if it doesn't, return a clear error
+			res.Json(w, map[string]any{"error": "invalid JSON body", "details": err.Error()}, http.StatusBadRequest)
 			return
 		}
 
-		if body.UserExtId == "" {
-			res.Json(w, map[string]any{
-				"error":    "userExtId is required",
-				"required": []string{"userExtId"},
-			}, http.StatusBadRequest)
+		// hard validation
+		if body == nil || body.UserExtId == "" {
+			res.Json(w, map[string]any{"error": "userExtId is required"}, http.StatusBadRequest)
 			return
 		}
 
 		data := Controller.DocumentService.OpenProducts(body)
+
+		// ✅ never return null
+		if data == nil {
+			data = []OpenProducts{}
+		}
+
 		res.Json(w, data, http.StatusOK)
 	}
 }

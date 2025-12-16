@@ -117,7 +117,7 @@ func (r *DocumentRrepository) GetOpenProducts(dto *AllProductsDto) ([]OpenProduc
 	}
 	defer rows.Close()
 
-	var out []OpenProducts
+	out := make([]OpenProducts, 0, 64)
 	for rows.Next() {
 		var (
 			itemCode      string
