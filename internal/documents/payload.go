@@ -3,13 +3,13 @@ package documents
 import "time"
 
 type CartessetDto struct {
-	CardCode string `json:cardCode`
-	DateFrom string `json:dateFrom`
-	DateTo   string `json:dateTo`
+	CardCode string `json:"cardCode"`
+	DateFrom string `json:"dateFrom"`
+	DateTo   string `json:"dateTo"`
 }
 
 type AllProductsDto struct {
-	UserExtId string `json:userExtId`
+	UserExtId string `json:"userExtId"`
 }
 
 type Cartesset struct {

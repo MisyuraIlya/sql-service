@@ -24,20 +24,29 @@ func NewDocumentController(router *http.ServeMux, deps DocumentControllerDeps) *
 	}
 
 	router.Handle("POST /cartesset", controller.GetCartesset())
-	router.Handle("GET /openProducts", controller.OpenProducts())
+	router.Handle("POST /openProducts", controller.OpenProducts()) // ✅ POST (body works)
+
 	return controller
 }
 
 func (Controller *DocumentController) GetCartesset() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		body, err := req.HandleBody[CartessetDto](&w, r)
-		// Get products from database
 		if err != nil {
 			return
 		}
-		data := Controller.DocumentService.DocumentServiceHandler(body)
-		res.Json(w, data, 200)
 
+		// Basic validation
+		if body.CardCode == "" || body.DateFrom == "" || body.DateTo == "" {
+			res.Json(w, map[string]any{
+				"error":    "cardCode, dateFrom, dateTo are required",
+				"required": []string{"cardCode", "dateFrom", "dateTo"},
+			}, http.StatusBadRequest)
+			return
+		}
+
+		data := Controller.DocumentService.DocumentServiceHandler(body)
+		res.Json(w, data, http.StatusOK)
 	}
 }
 
@@ -47,8 +56,16 @@ func (Controller *DocumentController) OpenProducts() http.HandlerFunc {
 		if err != nil {
 			return
 		}
-		data := Controller.DocumentService.OpenProducts(body)
-		res.Json(w, data, 200)
 
+		if body.UserExtId == "" {
+			res.Json(w, map[string]any{
+				"error":    "userExtId is required",
+				"required": []string{"userExtId"},
+			}, http.StatusBadRequest)
+			return
+		}
+
+		data := Controller.DocumentService.OpenProducts(body)
+		res.Json(w, data, http.StatusOK)
 	}
 }

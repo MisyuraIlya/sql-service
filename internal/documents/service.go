@@ -16,6 +16,7 @@ func (service *DocumentService) DocumentServiceHandler(dto *CartessetDto) []Cart
 	result, err := service.documentRrepository.GetCartesset(dto)
 	if err != nil {
 		fmt.Println("error", err.Error())
+		return []Cartesset{} // ✅ never nil
 	}
 	return result
 }
@@ -24,6 +25,7 @@ func (service *DocumentService) OpenProducts(dto *AllProductsDto) []OpenProducts
 	result, err := service.documentRrepository.GetOpenProducts(dto)
 	if err != nil {
 		fmt.Println("error", err.Error())
+		return []OpenProducts{} // ✅ never nil
 	}
 	return result
 }
