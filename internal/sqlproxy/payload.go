@@ -27,3 +27,12 @@ type QueryResponse struct {
 	RowsTotal   int         `json:"rowsTotal"`
 	WarningNote string      `json:"warningNote,omitempty"`
 }
+
+// ✅ new response type returned by controller
+type FlatQueryResponse struct {
+	DBName      string           `json:"dbName"`
+	DurationMs  int64            `json:"durationMs"`
+	RowsTotal   int              `json:"rowsTotal"`
+	Rows        []map[string]any `json:"rows"`
+	WarningNote string           `json:"warningNote,omitempty"`
+}

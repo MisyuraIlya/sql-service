@@ -33,6 +33,7 @@ func (r *Repository) buildConnString(db DBConnDTO) (string, error) {
 	q := url.Values{}
 	q.Set("database", db.Database)
 
+	// NOTE: you currently disable encryption
 	q.Set("encrypt", "disable")
 
 	u.RawQuery = q.Encode()

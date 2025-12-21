@@ -45,6 +45,7 @@ func (c *Controller) Run() http.HandlerFunc {
 			return
 		}
 
-		res.Json(w, out, http.StatusOK)
+		// ✅ flat response (rows only + meta)
+		res.Json(w, Flatten(out), http.StatusOK)
 	}
 }
