@@ -8,14 +8,12 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// Config holds the application configuration.
 type Config struct {
 	DbConfig            DbConfig
 	ImagesPath          string
 	ProductLineArtsPath string
 }
 
-// DbConfig holds database-related configuration.
 type DbConfig struct {
 	Server   string
 	Port     int
