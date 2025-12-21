@@ -45,7 +45,6 @@ func (Controller *ProductController) GetProducts() http.HandlerFunc {
 		}
 		log.Printf("[/products] body parsed (elapsed=%s), skus=%d", time.Since(reqStart), len(body.Skus))
 
-		// 🔽 dump full body as JSON
 		if payload, err := json.Marshal(body); err == nil {
 			log.Printf("[/products] request body dump: %s", string(payload))
 		} else {

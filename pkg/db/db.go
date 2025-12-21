@@ -21,7 +21,6 @@ func NewConnection(cfg *configs.Config) (*Db, error) {
 		return nil, err
 	}
 
-	// Verify the connection
 	if err := db.Ping(); err != nil {
 		return nil, err
 	}

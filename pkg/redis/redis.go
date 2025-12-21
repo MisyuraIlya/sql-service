@@ -14,9 +14,7 @@ type Redisdb struct {
 }
 
 func NewRedis(conf *configs.Config) *Redisdb {
-	rdb := redis.NewClient(&redis.Options{
-		// Addr: conf.Redis.Dsn,
-	})
+	rdb := redis.NewClient(&redis.Options{})
 
 	ctx := context.Background()
 	if err := rdb.Ping(ctx).Err(); err != nil {

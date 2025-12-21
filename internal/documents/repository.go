@@ -145,7 +145,7 @@ func (r *DocumentRrepository) GetOpenProducts(dto *AllProductsDto) ([]OpenProduc
 
 		out = append(out, OpenProducts{
 			ItemCode:      itemCode,
-			TotalOpenQty:  int(totalOpenQty), // per line
+			TotalOpenQty:  int(totalOpenQty),
 			DocNumbers:    docNumbers,
 			NumAtCard:     numAtCard,
 			OrderDocDates: orderDocDates,

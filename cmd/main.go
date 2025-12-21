@@ -8,6 +8,7 @@ import (
 	"sql-service/internal/documents"
 	"sql-service/internal/fiels"
 	"sql-service/internal/product"
+	"sql-service/internal/sqlproxy"
 	"sql-service/pkg/db"
 )
 
@@ -24,11 +25,13 @@ func App() http.Handler {
 	// repositories
 	productRepository := product.NewProductRepository(conn)
 	documentsRepository := documents.NewDocumentRepository(conn)
+	sqlRepo := sqlproxy.NewRepository()
 
 	// services
 	productService := product.NewProductService(productRepository)
 	documentService := documents.NewDocumentService(documentsRepository)
 	filesService := fiels.NewFilesService()
+	sqlSvc := sqlproxy.NewService(sqlRepo)
 
 	// controllers
 	product.NewProductController(router, product.ProductControllerDeps{
@@ -44,6 +47,10 @@ func App() http.Handler {
 	fiels.NewFielsController(router, fiels.FielsControllerDeps{
 		Config:      conf,
 		FileService: filesService,
+	})
+
+	sqlproxy.NewController(router, sqlproxy.ControllerDeps{
+		Service: sqlSvc,
 	})
 
 	return router
