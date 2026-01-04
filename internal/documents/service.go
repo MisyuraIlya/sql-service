@@ -1,6 +1,9 @@
 package documents
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 type DocumentService struct {
 	documentRrepository *DocumentRrepository
@@ -31,4 +34,8 @@ func (service *DocumentService) OpenProducts(dto *AllProductsDto) []OpenProducts
 		return []OpenProducts{}
 	}
 	return result
+}
+
+func (service *DocumentService) GetSapDocuments(ctx context.Context, query SapDocumentsQuery) (SapDocumentsResponse, error) {
+	return service.documentRrepository.GetSapDocuments(ctx, query)
 }

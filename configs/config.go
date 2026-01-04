@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -15,6 +16,8 @@ type Config struct {
 }
 
 type DbConfig struct {
+	Dialect  string
+	DSN      string
 	Server   string
 	Port     int
 	User     string
@@ -35,8 +38,15 @@ func LoadConfig() *Config {
 		port = 3306
 	}
 
+	dialect := strings.TrimSpace(strings.ToLower(os.Getenv("DB_DIALECT")))
+	if dialect == "" {
+		dialect = "mssql"
+	}
+
 	return &Config{
 		DbConfig: DbConfig{
+			Dialect:  dialect,
+			DSN:      strings.TrimSpace(os.Getenv("DB_DSN")),
 			Server:   os.Getenv("SERVER"),
 			Port:     port,
 			User:     os.Getenv("USER"),

@@ -25,6 +25,7 @@ func NewDocumentController(router *http.ServeMux, deps DocumentControllerDeps) *
 
 	router.Handle("POST /cartesset", controller.GetCartesset())
 	router.Handle("POST /openProducts", controller.OpenProducts())
+	router.Handle("GET /api/sap/documents", controller.GetSapDocuments())
 
 	return controller
 }
