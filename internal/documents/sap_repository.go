@@ -129,18 +129,22 @@ func (r *DocumentRrepository) GetSapDocuments(ctx context.Context, query SapDocu
 }
 
 func buildSapDocumentsQueries(dialect string, query SapDocumentsQuery) (sqlQuery, sqlQuery, error) {
+	tableDef, ok := sapDocTableByType[query.DocType]
+	if !ok {
+		return sqlQuery{}, sqlQuery{}, fmt.Errorf("unsupported docType: %s", query.DocType)
+	}
+
 	switch strings.ToLower(dialect) {
 	case "", "mssql":
-		return buildSapDocumentsQueriesMSSQL(query)
+		return buildSapDocumentsQueriesMSSQL(query, tableDef)
 	case "hana":
-		return buildSapDocumentsQueriesHANA(query)
+		return buildSapDocumentsQueriesHANA(query, tableDef)
 	default:
 		return sqlQuery{}, sqlQuery{}, fmt.Errorf("unsupported db dialect: %s", dialect)
 	}
 }
 
-func buildSapDocumentsQueriesMSSQL(query SapDocumentsQuery) (sqlQuery, sqlQuery, error) {
-	unionSQL := buildSapDocumentsUnionMSSQL()
+func buildSapDocumentsQueriesMSSQL(query SapDocumentsQuery, tableDef sapDocTable) (sqlQuery, sqlQuery, error) {
 	orderClause, err := buildSapDocumentsOrderBy(query.SortBy, query.SortDir)
 	if err != nil {
 		return sqlQuery{}, sqlQuery{}, err
@@ -154,16 +158,26 @@ func buildSapDocumentsQueriesMSSQL(query SapDocumentsQuery) (sqlQuery, sqlQuery,
 		sql.Named("warehouseCode", optionalStringArg(query.WarehouseCode)),
 	}
 
+	whereClause := fmt.Sprintf(`H.DocDate >= @dateFrom AND H.DocDate <= @dateTo
+  AND (@cardCode IS NULL OR H.CardCode = @cardCode)
+  AND (@docStatus IS NULL OR H.DocStatus = @docStatus)
+  AND (@warehouseCode IS NULL OR EXISTS (
+        SELECT 1 FROM %s L
+        WHERE L.DocEntry = H.DocEntry AND L.WhsCode = @warehouseCode
+      ))`, tableDef.Lines)
+
 	countQuery := sqlQuery{
-		Query: fmt.Sprintf("SELECT COUNT(1) FROM (%s) AS k", unionSQL),
+		Query: fmt.Sprintf("SELECT COUNT(1) FROM %s H WHERE %s", tableDef.Header, whereClause),
 		Args:  baseArgs,
 	}
 
 	offset := (query.Page - 1) * query.PageSize
 	keysQuery := sqlQuery{
 		Query: fmt.Sprintf(
-			"SELECT docType, DocEntry, DocDate FROM (%s) AS k ORDER BY %s OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY",
-			unionSQL,
+			"SELECT '%s' AS docType, H.DocEntry, H.DocDate FROM %s H WHERE %s ORDER BY %s OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY",
+			tableDef.DocType,
+			tableDef.Header,
+			whereClause,
 			orderClause,
 		),
 		Args: append(append([]any{}, baseArgs...), sql.Named("offset", offset), sql.Named("pageSize", query.PageSize)),
@@ -172,15 +186,36 @@ func buildSapDocumentsQueriesMSSQL(query SapDocumentsQuery) (sqlQuery, sqlQuery,
 	return countQuery, keysQuery, nil
 }
 
-func buildSapDocumentsQueriesHANA(query SapDocumentsQuery) (sqlQuery, sqlQuery, error) {
-	unionSQL, baseArgs := buildSapDocumentsUnionHANA(query)
+func buildSapDocumentsQueriesHANA(query SapDocumentsQuery, tableDef sapDocTable) (sqlQuery, sqlQuery, error) {
 	orderClause, err := buildSapDocumentsOrderBy(query.SortBy, query.SortDir)
 	if err != nil {
 		return sqlQuery{}, sqlQuery{}, err
 	}
 
+	cardCode := optionalStringArg(query.CardCode)
+	docStatus := optionalStringArg(query.DocStatus)
+	warehouseCode := optionalStringArg(query.WarehouseCode)
+	baseArgs := []any{
+		query.DateFrom,
+		query.DateTo,
+		cardCode,
+		cardCode,
+		docStatus,
+		docStatus,
+		warehouseCode,
+		warehouseCode,
+	}
+
+	whereClause := fmt.Sprintf(`H.DocDate >= ? AND H.DocDate <= ?
+  AND (? IS NULL OR H.CardCode = ?)
+  AND (? IS NULL OR H.DocStatus = ?)
+  AND (? IS NULL OR EXISTS (
+        SELECT 1 FROM %s L
+        WHERE L.DocEntry = H.DocEntry AND L.WhsCode = ?
+      ))`, tableDef.Lines)
+
 	countQuery := sqlQuery{
-		Query: fmt.Sprintf("SELECT COUNT(1) FROM (%s) AS k", unionSQL),
+		Query: fmt.Sprintf("SELECT COUNT(1) FROM %s H WHERE %s", tableDef.Header, whereClause),
 		Args:  baseArgs,
 	}
 
@@ -188,8 +223,10 @@ func buildSapDocumentsQueriesHANA(query SapDocumentsQuery) (sqlQuery, sqlQuery, 
 	keysArgs := append(append([]any{}, baseArgs...), query.PageSize, offset)
 	keysQuery := sqlQuery{
 		Query: fmt.Sprintf(
-			"SELECT docType, DocEntry, DocDate FROM (%s) AS k ORDER BY %s LIMIT ? OFFSET ?",
-			unionSQL,
+			"SELECT '%s' AS docType, H.DocEntry, H.DocDate FROM %s H WHERE %s ORDER BY %s LIMIT ? OFFSET ?",
+			tableDef.DocType,
+			tableDef.Header,
+			whereClause,
 			orderClause,
 		),
 		Args: keysArgs,

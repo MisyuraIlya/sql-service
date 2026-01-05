@@ -3,6 +3,7 @@ package documents
 import "time"
 
 type SapDocumentsQuery struct {
+	DocType       string
 	CardCode      *string
 	DateFrom      time.Time
 	DateTo        time.Time

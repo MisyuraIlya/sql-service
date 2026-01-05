@@ -2,6 +2,7 @@ package documents
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -51,6 +52,26 @@ func (Controller *DocumentController) GetSapDocuments() http.HandlerFunc {
 
 func parseSapDocumentsQuery(r *http.Request) (*SapDocumentsQuery, error) {
 	values := r.URL.Query()
+
+	docTypeRaw := strings.TrimSpace(values.Get("docType"))
+	if docTypeRaw == "" {
+		docTypeRaw = strings.TrimSpace(values.Get("DocType"))
+	}
+	if docTypeRaw == "" {
+		return nil, requestError{
+			status:  http.StatusBadRequest,
+			message: "docType is required",
+			details: "docType is required",
+		}
+	}
+	docType, ok := normalizeSapDocType(docTypeRaw)
+	if !ok {
+		return nil, requestError{
+			status:  http.StatusBadRequest,
+			message: "invalid docType",
+			details: docTypeAllowedDetails(),
+		}
+	}
 
 	dateFromStr := strings.TrimSpace(values.Get("dateFrom"))
 	dateToStr := strings.TrimSpace(values.Get("dateTo"))
@@ -171,6 +192,7 @@ func parseSapDocumentsQuery(r *http.Request) (*SapDocumentsQuery, error) {
 	}
 
 	return &SapDocumentsQuery{
+		DocType:       docType,
 		CardCode:      cardCode,
 		DateFrom:      dateFrom,
 		DateTo:        dateTo,
@@ -181,4 +203,35 @@ func parseSapDocumentsQuery(r *http.Request) (*SapDocumentsQuery, error) {
 		Page:          page,
 		PageSize:      pageSize,
 	}, nil
+}
+
+func normalizeSapDocType(value string) (string, bool) {
+	key := normalizeSapDocTypeKey(value)
+	if key == "" {
+		return "", false
+	}
+	for _, entry := range sapDocTables {
+		if key == normalizeSapDocTypeKey(entry.DocType) || key == normalizeSapDocTypeKey(entry.Header) {
+			return entry.DocType, true
+		}
+	}
+	return "", false
+}
+
+func normalizeSapDocTypeKey(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.ReplaceAll(value, " ", "")
+	value = strings.ReplaceAll(value, "-", "")
+	value = strings.ReplaceAll(value, "_", "")
+	return value
+}
+
+func docTypeAllowedDetails() string {
+	docTypes := make([]string, 0, len(sapDocTables))
+	tableCodes := make([]string, 0, len(sapDocTables))
+	for _, entry := range sapDocTables {
+		docTypes = append(docTypes, entry.DocType)
+		tableCodes = append(tableCodes, entry.Header)
+	}
+	return fmt.Sprintf("docType must be one of %s (or table codes: %s)", strings.Join(docTypes, ", "), strings.Join(tableCodes, ", "))
 }
