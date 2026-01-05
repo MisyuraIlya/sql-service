@@ -119,6 +119,18 @@ func parseSapDocumentsQuery(r *http.Request) (*SapDocumentsQuery, error) {
 		warehouseCode = &value
 	}
 
+	var warehouseCodeNotEqual *string
+	if value := strings.TrimSpace(values.Get("warehouseCodeNotEqual")); value != "" {
+		warehouseCodeNotEqual = &value
+	}
+	if warehouseCode != nil && warehouseCodeNotEqual != nil && strings.EqualFold(*warehouseCode, *warehouseCodeNotEqual) {
+		return nil, requestError{
+			status:  http.StatusBadRequest,
+			message: "warehouseCode and warehouseCodeNotEqual cannot be the same",
+			details: "warehouseCode and warehouseCodeNotEqual cannot be the same",
+		}
+	}
+
 	var docStatus *string
 	if value := strings.TrimSpace(values.Get("DocStatus")); value != "" {
 		if value != "O" && value != "C" {
@@ -197,6 +209,7 @@ func parseSapDocumentsQuery(r *http.Request) (*SapDocumentsQuery, error) {
 		DateFrom:      dateFrom,
 		DateTo:        dateTo,
 		WarehouseCode: warehouseCode,
+		WarehouseCodeNotEqual: warehouseCodeNotEqual,
 		DocStatus:     docStatus,
 		SortBy:        sortBy,
 		SortDir:       sortDir,

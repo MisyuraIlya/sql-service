@@ -156,6 +156,7 @@ func buildSapDocumentsQueriesMSSQL(query SapDocumentsQuery, tableDef sapDocTable
 		sql.Named("cardCode", optionalStringArg(query.CardCode)),
 		sql.Named("docStatus", optionalStringArg(query.DocStatus)),
 		sql.Named("warehouseCode", optionalStringArg(query.WarehouseCode)),
+		sql.Named("warehouseCodeNotEqual", optionalStringArg(query.WarehouseCodeNotEqual)),
 	}
 
 	whereClause := fmt.Sprintf(`H.DocDate >= @dateFrom AND H.DocDate <= @dateTo
@@ -164,7 +165,11 @@ func buildSapDocumentsQueriesMSSQL(query SapDocumentsQuery, tableDef sapDocTable
   AND (@warehouseCode IS NULL OR EXISTS (
         SELECT 1 FROM %s L
         WHERE L.DocEntry = H.DocEntry AND L.WhsCode = @warehouseCode
-      ))`, tableDef.Lines)
+      ))
+  AND (@warehouseCodeNotEqual IS NULL OR NOT EXISTS (
+        SELECT 1 FROM %s L2
+        WHERE L2.DocEntry = H.DocEntry AND L2.WhsCode = @warehouseCodeNotEqual
+      ))`, tableDef.Lines, tableDef.Lines)
 
 	countQuery := sqlQuery{
 		Query: fmt.Sprintf("SELECT COUNT(1) FROM %s H WHERE %s", tableDef.Header, whereClause),
@@ -195,6 +200,7 @@ func buildSapDocumentsQueriesHANA(query SapDocumentsQuery, tableDef sapDocTable)
 	cardCode := optionalStringArg(query.CardCode)
 	docStatus := optionalStringArg(query.DocStatus)
 	warehouseCode := optionalStringArg(query.WarehouseCode)
+	warehouseCodeNotEqual := optionalStringArg(query.WarehouseCodeNotEqual)
 	baseArgs := []any{
 		query.DateFrom,
 		query.DateTo,
@@ -204,6 +210,8 @@ func buildSapDocumentsQueriesHANA(query SapDocumentsQuery, tableDef sapDocTable)
 		docStatus,
 		warehouseCode,
 		warehouseCode,
+		warehouseCodeNotEqual,
+		warehouseCodeNotEqual,
 	}
 
 	whereClause := fmt.Sprintf(`H.DocDate >= ? AND H.DocDate <= ?
@@ -212,7 +220,11 @@ func buildSapDocumentsQueriesHANA(query SapDocumentsQuery, tableDef sapDocTable)
   AND (? IS NULL OR EXISTS (
         SELECT 1 FROM %s L
         WHERE L.DocEntry = H.DocEntry AND L.WhsCode = ?
-      ))`, tableDef.Lines)
+      ))
+  AND (? IS NULL OR NOT EXISTS (
+        SELECT 1 FROM %s L2
+        WHERE L2.DocEntry = H.DocEntry AND L2.WhsCode = ?
+      ))`, tableDef.Lines, tableDef.Lines)
 
 	countQuery := sqlQuery{
 		Query: fmt.Sprintf("SELECT COUNT(1) FROM %s H WHERE %s", tableDef.Header, whereClause),

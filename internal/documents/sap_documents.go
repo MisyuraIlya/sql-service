@@ -8,6 +8,7 @@ type SapDocumentsQuery struct {
 	DateFrom      time.Time
 	DateTo        time.Time
 	WarehouseCode *string
+	WarehouseCodeNotEqual *string
 	DocStatus     *string
 	SortBy        string
 	SortDir       string
