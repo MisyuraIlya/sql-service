@@ -190,9 +190,27 @@ BestDiscountPerItem AS (
     GROUP BY R.ItemCode, Mode.DiscountMode
 ),
 
+DiscountRuleType AS (
+    SELECT
+        R.ItemCode,
+        R.RuleType,
+        ROW_NUMBER() OVER (
+            PARTITION BY R.ItemCode
+            ORDER BY
+                CASE
+                    WHEN Mode.DiscountMode = 'L' THEN R.DiscountPct
+                    ELSE -R.DiscountPct
+                END ASC,
+                R.RuleType
+        ) AS rn
+    FROM AllDiscountRules AS R
+    CROSS JOIN BpDiscountMode AS Mode
+),
+
 PromoDiscount AS (
     SELECT
         I.ItemCode,
+        E.Type AS PromoType,
         E1.Discount AS PromoDiscount
     FROM OEDG AS E WITH (NOLOCK)
     INNER JOIN EDG1 AS E1 WITH (NOLOCK)
@@ -293,6 +311,16 @@ SELECT
     CAST(SP.OSPPDiscount AS DECIMAL(19,4))                           AS OSPPDiscount,
     CAST(BD.DiscountPct AS DECIMAL(19,4))                            AS BPGroupDiscount,
     CAST(BD.DiscountMode AS NVARCHAR(1))                             AS BPGroupDiscountType,
+    CAST(
+        CASE
+            WHEN SP.OSPPPrice IS NOT NULL AND SP.OSPPPrice > 0 THEN NULL
+            WHEN SP.OSPPDiscount IS NOT NULL THEN NULL
+            WHEN BD.DiscountPct IS NOT NULL THEN DRT.RuleType
+            WHEN PD.PromoDiscount IS NOT NULL THEN PD.PromoType
+            ELSE NULL
+        END
+        AS NVARCHAR(1)
+    )                                                                AS OedgType,
     CAST(NULL AS NVARCHAR(255))                                      AS ManufacturerName,
     CAST(NULL AS DECIMAL(19,4))                                      AS ManufacturerDiscount,
     CAST(PD.PromoDiscount AS DECIMAL(19,4))                          AS PromoDiscount,
@@ -335,6 +363,9 @@ LEFT JOIN SpecialPrice AS SP
       AND (SP.ListNum IS NULL OR SP.ListNum = (SELECT ListNum FROM Cust))
 LEFT JOIN BestDiscountPerItem AS BD
        ON BD.ItemCode = BP.ItemCode
+LEFT JOIN DiscountRuleType AS DRT
+       ON DRT.ItemCode = BP.ItemCode
+      AND DRT.rn = 1
 LEFT JOIN PromoDiscount AS PD
        ON PD.ItemCode = BP.ItemCode
 LEFT JOIN Stock AS S
@@ -378,6 +409,7 @@ OPTION (RECOMPILE);
 			&p.OSPPDiscount,
 			&p.BPGroupDiscount,
 			&p.BPGroupDiscountType,
+			&p.OedgType,
 			&p.ManufacturerName,
 			&p.ManufacturerDiscount,
 			&p.PromoDiscount,
