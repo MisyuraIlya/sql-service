@@ -117,19 +117,16 @@ AllDiscountRules AS (
     FROM BasePrice AS BP
     CROSS JOIN CustGroup
     INNER JOIN OEDG AS E WITH (NOLOCK)
-        ON (
+       ON (
              (E.Type = 'S' AND E.ObjCode = @cardCode)
           OR (E.Type = 'C' AND E.ObjCode = CONVERT(NVARCHAR, CustGroup.GroupCode))
           OR (E.ObjType = '-1' AND E.ObjCode = '0') -- global rule
           )
        AND (
-            E.ValidFor = 'N'
-            OR (
-                E.ValidFor = 'Y'
-                AND (
-                        (E.ValidForm IS NULL OR E.ValidForm <= @asOfDate)
-                    AND (E.ValidTo   IS NULL OR E.ValidTo   >= @asOfDate)
-                )
+            E.ValidFor = 'Y'
+            AND (
+                    (E.ValidForm IS NULL OR E.ValidForm <= @asOfDate)
+                AND (E.ValidTo   IS NULL OR E.ValidTo   >= @asOfDate)
             )
        )
     INNER JOIN EDG1 AS E1 WITH (NOLOCK)
@@ -220,14 +217,11 @@ PromoDiscount AS (
         ON I.ItemCode = E1.ObjKey
     WHERE E.Type = 'A'
       AND (
-            E.ValidFor = 'N'
-         OR (
-                E.ValidFor = 'Y'
-            AND (
-                    (E.ValidForm IS NULL OR E.ValidForm <= @asOfDate)
-                AND (E.ValidTo   IS NULL OR E.ValidTo   >= @asOfDate)
-            )
-         )
+            E.ValidFor = 'Y'
+        AND (
+                (E.ValidForm IS NULL OR E.ValidForm <= @asOfDate)
+            AND (E.ValidTo   IS NULL OR E.ValidTo   >= @asOfDate)
+        )
       )
 ),
 
