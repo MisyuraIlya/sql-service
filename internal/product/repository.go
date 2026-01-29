@@ -29,6 +29,15 @@ func (s MyNullString) MarshalJSON() ([]byte, error) {
 	return []byte("null"), nil
 }
 
+type MyNullBool struct{ sql.NullBool }
+
+func (b MyNullBool) MarshalJSON() ([]byte, error) {
+	if b.Valid {
+		return json.Marshal(b.Bool)
+	}
+	return []byte("null"), nil
+}
+
 type ProductRepository struct{ Db *db.Db }
 
 func NewProductRepository(db *db.Db) *ProductRepository { return &ProductRepository{Db: db} }
@@ -315,6 +324,16 @@ SELECT
         END
         AS NVARCHAR(1)
     )                                                                AS OedgType,
+    CAST(
+        CASE
+            WHEN SP.OSPPPrice IS NOT NULL AND SP.OSPPPrice > 0 THEN NULL
+            WHEN SP.OSPPDiscount IS NOT NULL THEN NULL
+            WHEN BD.DiscountPct IS NOT NULL THEN 1
+            WHEN PD.PromoDiscount IS NOT NULL THEN 1
+            ELSE NULL
+        END
+        AS bit
+    )                                                                AS OedgValidFor,
     CAST(NULL AS NVARCHAR(255))                                      AS ManufacturerName,
     CAST(NULL AS DECIMAL(19,4))                                      AS ManufacturerDiscount,
     CAST(PD.PromoDiscount AS DECIMAL(19,4))                          AS PromoDiscount,
@@ -406,6 +425,7 @@ OPTION (RECOMPILE);
 			&p.BPGroupDiscount,
 			&p.BPGroupDiscountType,
 			&p.OedgType,
+			&p.OedgValidFor,
 			&p.ManufacturerName,
 			&p.ManufacturerDiscount,
 			&p.PromoDiscount,
