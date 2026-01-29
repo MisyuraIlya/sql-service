@@ -380,6 +380,8 @@ OPTION (RECOMPILE);
 	}
 	log.Println("====== END GetProducts DUMP =====")
 
+	r.logOEDGDebug(dto)
+
 	queryStart := time.Now()
 	rows, err := r.Db.Query(query, args...)
 	if err != nil {
@@ -428,6 +430,141 @@ OPTION (RECOMPILE);
 
 	log.Printf("GetProducts: DONE total=%s, rows=%d", time.Since(totalStart), len(products))
 	return products, nil
+}
+
+func (r *ProductRepository) logOEDGDebug(dto *ProductsDto) {
+	if len(dto.Skus) == 0 {
+		return
+	}
+
+	debugStart := time.Now()
+	log.Printf("GetProducts: OEDG debug start")
+
+	unionParts := make([]string, 0, len(dto.Skus))
+	args := []any{
+		sql.Named("cardCode", dto.CardCode),
+		sql.Named("asOfDate", dto.Date),
+	}
+	for i, sku := range dto.Skus {
+		name := fmt.Sprintf("sku%d", i)
+		if i == 0 {
+			unionParts = append(unionParts, fmt.Sprintf("SELECT @%s AS sku", name))
+		} else {
+			unionParts = append(unionParts, fmt.Sprintf("UNION ALL SELECT @%s", name))
+		}
+		args = append(args, sql.Named(name, sku))
+	}
+	skuUnion := strings.Join(unionParts, "\n        ")
+
+	debugQuery := fmt.Sprintf(`
+WITH SkuList AS (
+        %s
+),
+CustGroup AS (
+    SELECT TOP 1 GroupCode
+    FROM OCRD WITH (NOLOCK)
+    WHERE CardCode = @cardCode
+)
+SELECT
+    E.AbsEntry,
+    E.Type,
+    E.ObjType,
+    E.ObjCode,
+    E.ValidFor,
+    E.ValidForm,
+    E.ValidTo,
+    CASE
+        WHEN E.ValidFor = 'Y'
+         AND (E.ValidForm IS NULL OR E.ValidForm <= @asOfDate)
+         AND (E.ValidTo   IS NULL OR E.ValidTo   >= @asOfDate) THEN 1
+        ELSE 0
+    END AS oedgValidFor,
+    E1.ObjType AS LineObjType,
+    E1.ObjKey,
+    E1.Discount
+FROM OEDG AS E WITH (NOLOCK)
+JOIN EDG1 AS E1 WITH (NOLOCK)
+  ON E1.AbsEntry = E.AbsEntry
+LEFT JOIN OITM WITH (NOLOCK)
+  ON OITM.ItemCode IN (SELECT sku FROM SkuList)
+CROSS JOIN CustGroup
+WHERE
+    (
+        (E.Type = 'S' AND E.ObjCode = @cardCode)
+     OR (E.Type = 'C' AND E.ObjCode = CONVERT(NVARCHAR, CustGroup.GroupCode))
+     OR (E.ObjType = '-1' AND E.ObjCode = '0')
+    )
+  AND (
+        (E1.ObjType = '4'  AND E1.ObjKey IN (SELECT sku FROM SkuList))
+     OR (E1.ObjType = '43' AND TRY_CAST(E1.ObjKey AS INT) = OITM.FirmCode)
+     OR (E1.ObjType = '52' AND TRY_CAST(E1.ObjKey AS INT) = OITM.ItmsGrpCod)
+  )
+ORDER BY E.AbsEntry;
+`, skuUnion)
+
+	rows, err := r.Db.Query(debugQuery, args...)
+	if err != nil {
+		log.Printf("GetProducts: OEDG debug query error after %s: %v", time.Since(debugStart), err)
+		return
+	}
+	defer rows.Close()
+
+	type debugRow struct {
+		AbsEntry     int64
+		Type         sql.NullString
+		ObjType      sql.NullString
+		ObjCode      sql.NullString
+		ValidFor     sql.NullString
+		ValidForm    sql.NullTime
+		ValidTo      sql.NullTime
+		ValidCalc    sql.NullInt64
+		LineObjType  sql.NullString
+		ObjKey       sql.NullString
+		Discount     sql.NullFloat64
+	}
+
+	rowCount := 0
+	for rows.Next() {
+		var rrow debugRow
+		if err := rows.Scan(
+			&rrow.AbsEntry,
+			&rrow.Type,
+			&rrow.ObjType,
+			&rrow.ObjCode,
+			&rrow.ValidFor,
+			&rrow.ValidForm,
+			&rrow.ValidTo,
+			&rrow.ValidCalc,
+			&rrow.LineObjType,
+			&rrow.ObjKey,
+			&rrow.Discount,
+		); err != nil {
+			log.Printf("GetProducts: OEDG debug scan error: %v", err)
+			return
+		}
+		rowCount++
+		log.Printf(
+			"GetProducts: OEDG rule AbsEntry=%d Type=%s ObjType=%s ObjCode=%s ValidFor=%s ValidForm=%v ValidTo=%v ValidCalc=%v LineObjType=%s ObjKey=%s Discount=%v",
+			rrow.AbsEntry,
+			rrow.Type.String,
+			rrow.ObjType.String,
+			rrow.ObjCode.String,
+			rrow.ValidFor.String,
+			rrow.ValidForm.Time,
+			rrow.ValidTo.Time,
+			rrow.ValidCalc.Int64,
+			rrow.LineObjType.String,
+			rrow.ObjKey.String,
+			rrow.Discount.Float64,
+		)
+	}
+
+	if err := rows.Err(); err != nil {
+		log.Printf("GetProducts: OEDG debug rows.Err(): %v", err)
+		return
+	}
+
+	log.Printf("GetProducts: OEDG debug done rows=%d took=%s", rowCount, time.Since(debugStart))
 }
 
 func (r *ProductRepository) GeTreeProducts(dto *ProductSkusDto) ([]BomHeaderDTO, error) {
