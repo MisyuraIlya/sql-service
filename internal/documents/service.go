@@ -36,6 +36,18 @@ func (service *DocumentService) OpenProducts(dto *AllProductsDto) []OpenProducts
 	return result
 }
 
+func (service *DocumentService) Hovot(dto *HovotDto) []Hovot {
+	result, err := service.documentRrepository.GetHovot(dto)
+	if err != nil {
+		fmt.Println("error", err.Error())
+		return []Hovot{}
+	}
+	if result == nil {
+		return []Hovot{}
+	}
+	return result
+}
+
 func (service *DocumentService) GetSapDocuments(ctx context.Context, query SapDocumentsQuery) (SapDocumentsResponse, error) {
 	return service.documentRrepository.GetSapDocuments(ctx, query)
 }

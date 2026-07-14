@@ -12,20 +12,31 @@ type CartessetDto struct {
 	DateTo   string `json:"dateTo"`
 }
 
+type HovotDto struct {
+	CardCode string `json:"cardCode"`
+}
+
 type Cartesset struct {
-	CreateDate time.Time `json:"createDate"`
-	DueDate    time.Time `json:"dueDate"`
-	DocType    string    `json:"docType"`
-	BaseRef    string    `json:"baseRef"`
-	Ref1       string    `json:"ref1"`
-	Ref2       string    `json:"ref2"`
-	TransId    int       `json:"transId"`
-	ShortName  string    `json:"shortName"`
-	Memo       string    `json:"memo"`
-	Debit      float64   `json:"debit"`
-	Credit     float64   `json:"credit"`
-	CardCode   string    `json:"cardCode"`
-	CardName   string    `json:"cardName"`
+	DocDate        *time.Time `json:"docDate"`
+	DueDate        *time.Time `json:"dueDate"`
+	DocType        string     `json:"docType"`
+	DocNum         *string    `json:"docNum"`
+	NumAtCard      *string    `json:"numAtCard"`
+	ConfNum        *string    `json:"confNum"`
+	Hova           float64    `json:"hova"`
+	Zchut          float64    `json:"zchut"`
+	RunningBalance float64    `json:"runningBalance"`
+}
+
+type Hovot struct {
+	DueDate     *time.Time `json:"dueDate"`
+	DocDate     *time.Time `json:"docDate"`
+	DocType     string     `json:"docType"`
+	DocNum      *string    `json:"docNum"`
+	NumAtCard   *string    `json:"numAtCard"`
+	ConfNum     *string    `json:"confNum"`
+	Amount      float64    `json:"amount"`
+	RunningOpen float64    `json:"runningOpen"`
 }
 
 type OpenProducts struct {

@@ -25,6 +25,7 @@ func NewDocumentController(router *http.ServeMux, deps DocumentControllerDeps) *
 
 	router.Handle("POST /cartesset", controller.GetCartesset())
 	router.Handle("POST /openProducts", controller.OpenProducts())
+	router.Handle("POST /hovot", controller.GetHovot())
 	router.Handle("GET /api/sap/documents", controller.GetSapDocuments())
 
 	return controller
@@ -68,6 +69,29 @@ func (Controller *DocumentController) OpenProducts() http.HandlerFunc {
 
 		if data == nil {
 			data = []OpenProducts{}
+		}
+
+		res.Json(w, data, http.StatusOK)
+	}
+}
+
+func (Controller *DocumentController) GetHovot() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, err := req.HandleBody[HovotDto](&w, r)
+		if err != nil {
+			res.Json(w, map[string]any{"error": "invalid JSON body", "details": err.Error()}, http.StatusBadRequest)
+			return
+		}
+
+		if body == nil || body.CardCode == "" {
+			res.Json(w, map[string]any{"error": "cardCode is required"}, http.StatusBadRequest)
+			return
+		}
+
+		data := Controller.DocumentService.Hovot(body)
+
+		if data == nil {
+			data = []Hovot{}
 		}
 
 		res.Json(w, data, http.StatusOK)
