@@ -411,7 +411,11 @@ OPTION (RECOMPILE);
 	defer rows.Close()
 
 	scanStart := time.Now()
-	var products []Product
+	// Non-nil so that "no rows matched" serialises as [] rather than null. A nil
+	// slice marshals to null, which is byte-identical to the failure response and
+	// left callers unable to tell "this batch failed" from "these SKUs have no
+	// price" (ticket 12761988168).
+	products := make([]Product, 0, len(dto.Skus))
 	skipped := 0
 	for rows.Next() {
 		var p Product

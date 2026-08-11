@@ -51,7 +51,15 @@ func (Controller *ProductController) GetProducts() http.HandlerFunc {
 			log.Printf("[/products] failed to marshal body for logging: %v", err)
 		}
 
-		data := Controller.ProductService.ProductServiceHandler(body)
+		data, err := Controller.ProductService.ProductServiceHandler(body)
+		if err != nil {
+			// Answer with a real failure status and the reason. Previously this
+			// returned 200 with a body of `null`, indistinguishable from "no rows",
+			// so the caller silently priced every item at 0.
+			log.Printf("[/products] FAILED (elapsed=%s): %v", time.Since(reqStart), err)
+			res.Json(w, map[string]string{"error": err.Error()}, http.StatusInternalServerError)
+			return
+		}
 		log.Printf("[/products] service done (elapsed=%s), rows=%d", time.Since(reqStart), len(data))
 
 		res.Json(w, data, http.StatusOK)
