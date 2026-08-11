@@ -39,7 +39,7 @@ type Product struct {
 	OnOrder              MyNullFloat64 `json:"onOrder"`
 	Commited             MyNullFloat64 `json:"commited"`
 	PriceSource          string        `json:"priceSource"`
-	FinalPrice           float64       `json:"finalPrice"`
+	FinalPrice           MyNullFloat64 `json:"finalPrice"`
 }
 
 type ProductStock struct {

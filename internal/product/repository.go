@@ -412,6 +412,7 @@ OPTION (RECOMPILE);
 
 	scanStart := time.Now()
 	var products []Product
+	skipped := 0
 	for rows.Next() {
 		var p Product
 		if err := rows.Scan(
@@ -436,12 +437,18 @@ OPTION (RECOMPILE);
 			&p.PriceSource,
 			&p.FinalPrice,
 		); err != nil {
-			log.Printf("GetProducts: scan error after %s: %v", time.Since(scanStart), err)
-			return nil, err
+			// A single unscannable row must never discard the whole batch: the caller
+			// asked about N SKUs and dropping all N turns one bad ERP row into a
+			// catalogue-wide "no price, no stock" (and orders transmitted at 0).
+			// Skip the offending row and keep serving the rest.
+			skipped++
+			log.Printf("GetProducts: scan error on row %d (skipping row) after %s: %v",
+				len(products)+skipped, time.Since(scanStart), err)
+			continue
 		}
 		products = append(products, p)
 	}
-	log.Printf("GetProducts: scan loop took %s, rows=%d", time.Since(scanStart), len(products))
+	log.Printf("GetProducts: scan loop took %s, rows=%d, skipped=%d", time.Since(scanStart), len(products), skipped)
 
 	if err := rows.Err(); err != nil {
 		log.Printf("GetProducts: rows.Err(): %v", err)
