@@ -53,7 +53,20 @@ func LoadConfig() *Config {
 			Password: os.Getenv("PASSWORD"),
 			Database: os.Getenv("DATABASE"),
 		},
-		ImagesPath:          `\\192.168.2.41\b1_shr\Bitmaps\ProductImages`,
-		ProductLineArtsPath: `\\192.168.2.41\b1_shr\Bitmaps\Productlinearts`,
+		ImagesPath:          getEnv("IMAGES_PATH", defaultBitmapsPath+`\ProductImages`),
+		ProductLineArtsPath: getEnv("PRODUCT_LINEARTS_PATH", defaultBitmapsPath+`\Productlinearts`),
 	}
+}
+
+// The SAP B1 share (b1_shr) lives on the same host as this service, so the
+// bitmaps are reached on local disk rather than over SMB. Override either path
+// via the environment if the share moves off this box - a UNC path such as
+// \\SRV-DC-TLITE\b1_shr\Bitmaps\ProductImages works too.
+const defaultBitmapsPath = `C:\Program Files (x86)\SAP\SAP Business One Server\B1_SHR\Bitmaps`
+
+func getEnv(key, fallback string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return fallback
 }
