@@ -89,10 +89,19 @@ roll back by hand to any earlier build:
 
 ```powershell
 $root = 'C:\Services\DigiTradeService'
-& $root\nssm.exe stop DigiTradeService
+Stop-Service DigiTradeService -Force
 Copy-Item $root\backups\service_<timestamp>.exe $root\service.exe -Force
-& $root\nssm.exe start DigiTradeService
+Start-Service DigiTradeService
 ```
+
+Use `Stop-Service`/`Start-Service`, **not** `nssm stop`/`nssm start`, for service
+control in any script. NSSM reports routine progress such as `Unexpected status
+SERVICE_START_PENDING in response to START control` on **stderr**, and PowerShell 5.1 under
+`$ErrorActionPreference = 'Stop'` promotes native-command stderr into a terminating error -
+so a healthy start reads as a failure. That exact trap took production down once: it faked a
+failed start, triggered a rollback, and then threw again inside the rollback handler, which
+abandoned the service in the Stopped state. NSSM still supervises the process and applies its
+configured stop methods; only the control channel differs.
 
 Common causes of a service that starts and then dies: bad or missing `.env` (the app calls
 `log.Fatalf` when the DB connection fails), or port 9952 already held by an orphaned

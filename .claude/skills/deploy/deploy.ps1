@@ -61,6 +61,25 @@ function Get-GoExe {
     return $null
 }
 
+# Stop/start the service via the SCM rather than `nssm stop|start`. NSSM writes
+# routine progress ("Unexpected status SERVICE_START_PENDING in response to
+# START control") to stderr, and PowerShell 5.1 under $ErrorActionPreference =
+# 'Stop' promotes native-command stderr to a TERMINATING error - so a perfectly
+# healthy start looked like a failure and triggered a rollback. NSSM still
+# supervises the process and applies its configured stop methods either way;
+# only the control channel differs.
+function Stop-TargetService([string]$Name, [int]$Seconds) {
+    Stop-Service -Name $Name -Force -ErrorAction Stop
+    return (Wait-ServiceStatus $Name 'Stopped' $Seconds)
+}
+
+function Start-TargetService([string]$Name, [int]$Seconds) {
+    # Start-Service returns as soon as the SCM accepts the request; START_PENDING
+    # is expected, so the poll below - not this call - decides success.
+    Start-Service -Name $Name -ErrorAction Stop
+    return (Wait-ServiceStatus $Name 'Running' $Seconds)
+}
+
 function Wait-ServiceStatus([string]$Name, [string]$Status, [int]$Seconds) {
     $deadline = (Get-Date).AddSeconds($Seconds)
     while ((Get-Date) -lt $deadline) {
@@ -152,8 +171,12 @@ if ($rev) { Write-Host "    source: $rev" }
 
 # --------------------------------------------------------------------- stop --
 Write-Step "Stopping $ServiceName"
-& $nssm stop $ServiceName | Out-Null
-if (-not (Wait-ServiceStatus $ServiceName 'Stopped' $TimeoutSec)) {
+try {
+    $stopped = Stop-TargetService $ServiceName $TimeoutSec
+} catch {
+    Die "Could not stop ${ServiceName}: $($_.Exception.Message) Nothing was changed - the old binary is still in place and running. If this was Access Denied, re-run from an elevated PowerShell."
+}
+if (-not $stopped) {
     $st = (Get-Service $ServiceName).Status
     Die "Service did not stop within ${TimeoutSec}s (status: $st). Nothing was changed - the old binary is still in place and running. If this was Access Denied, re-run from an elevated PowerShell."
 }
@@ -175,8 +198,7 @@ try {
     Copy-Item $newExe $liveExe -Force
 
     Write-Step "Starting $ServiceName"
-    & $nssm start $ServiceName | Out-Null
-    if (-not (Wait-ServiceStatus $ServiceName 'Running' $TimeoutSec)) {
+    if (-not (Start-TargetService $ServiceName $TimeoutSec)) {
         throw "Service did not reach Running within ${TimeoutSec}s."
     }
 
@@ -204,19 +226,30 @@ catch {
         Write-Host '--- end ---' -ForegroundColor Red
     }
 
+    # Nothing in here may throw: an exception escaping the rollback would leave
+    # the service stopped and production down. Every step is guarded, and the
+    # last act is always an attempt to get *something* running again.
     if ($backup) {
         Write-Step 'Rolling back to previous binary'
-        & $nssm stop $ServiceName | Out-Null
-        Wait-ServiceStatus $ServiceName 'Stopped' $TimeoutSec | Out-Null
-        Copy-Item $backup $liveExe -Force
-        & $nssm start $ServiceName | Out-Null
-        if (Wait-ServiceStatus $ServiceName 'Running' $TimeoutSec) {
-            Write-Ok "Rolled back to $backup - service is running the previous build"
-        } else {
-            Write-Host "ROLLBACK FAILED - $ServiceName is DOWN. Restore $backup manually." -ForegroundColor Red
+        try {
+            Stop-TargetService $ServiceName $TimeoutSec | Out-Null
+            Copy-Item $backup $liveExe -Force
+            Write-Ok "Restored $backup"
+        } catch {
+            Write-Host "Rollback copy failed: $($_.Exception.Message)" -ForegroundColor Red
         }
     } else {
-        Write-Host 'No backup existed - service left as is.' -ForegroundColor Red
+        Write-Host 'No backup existed - restarting on the binary currently in place.' -ForegroundColor Red
+    }
+
+    try {
+        if (Start-TargetService $ServiceName $TimeoutSec) {
+            Write-Ok "$ServiceName is running again"
+        } else {
+            Write-Host "$ServiceName is DOWN and did not restart. Investigate now." -ForegroundColor Red
+        }
+    } catch {
+        Write-Host "$ServiceName is DOWN - restart failed: $($_.Exception.Message)" -ForegroundColor Red
     }
 }
 
