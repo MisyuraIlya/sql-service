@@ -29,6 +29,7 @@ var sapDocTables = []sapDocTable{
 	{DocType: "Orders", Header: "ORDR", Lines: "RDR1"},
 	{DocType: "Invoices", Header: "OINV", Lines: "INV1"},
 	{DocType: "Returns", Header: "ORDN", Lines: "RDN1"},
+	{DocType: "ReturnRequest", Header: "ORRR", Lines: "RRR1"},
 	{DocType: "Quotations", Header: "OQUT", Lines: "QUT1"},
 	{DocType: "DeliveryNotes", Header: "ODLN", Lines: "DLN1"},
 }
