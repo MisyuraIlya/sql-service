@@ -307,6 +307,7 @@ func (r *DocumentRrepository) GetOpenProducts(dto *AllProductsDto) ([]OpenProduc
 	const query = `
 		SELECT
 			r.ItemCode,
+			ISNULL(r.Dscription, '')             AS ItemName,
 			r.OpenQty AS TotalOpenQty,
 			CONVERT(varchar(20), o.DocNum)       AS DocNumbers,
 			ISNULL(o.NumAtCard, '')              AS NumAtCard,
@@ -338,6 +339,7 @@ func (r *DocumentRrepository) GetOpenProducts(dto *AllProductsDto) ([]OpenProduc
 	for rows.Next() {
 		var (
 			itemCode      string
+			itemName      string
 			totalOpenQty  float64
 			docNumbers    string
 			numAtCard     string
@@ -349,6 +351,7 @@ func (r *DocumentRrepository) GetOpenProducts(dto *AllProductsDto) ([]OpenProduc
 
 		if err := rows.Scan(
 			&itemCode,
+			&itemName,
 			&totalOpenQty,
 			&docNumbers,
 			&numAtCard,
@@ -362,6 +365,7 @@ func (r *DocumentRrepository) GetOpenProducts(dto *AllProductsDto) ([]OpenProduc
 
 		out = append(out, OpenProducts{
 			ItemCode:      itemCode,
+			ItemName:      itemName,
 			TotalOpenQty:  int(totalOpenQty),
 			DocNumbers:    docNumbers,
 			NumAtCard:     numAtCard,
