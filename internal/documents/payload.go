@@ -41,6 +41,7 @@ type Hovot struct {
 
 type OpenProducts struct {
 	ItemCode      string `json:"itemCode"`
+	ItemName      string `json:"itemName"`
 	TotalOpenQty  int    `json:"totalOpenQty"`
 	DocNumbers    string `json:"docNumbers"`
 	NumAtCard     string `json:"numAtCard"`
